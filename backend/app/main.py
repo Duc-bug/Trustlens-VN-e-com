@@ -17,3 +17,23 @@ app = FastAPI(
         "(Shopee, TikTok Shop, Tiki, Lazada, Google Maps) bằng Graph ML + NLP + Explainable AI (SHAP)."
     ),
     version="2.0.0",
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(api_router, prefix="/api")
+
+
+@app.get("/")
+def root_health():
+    return {
+        "system": "TrustLens VN - Fake Review & Seeding Detection Engine",
+        "status": "online",
+        "docs_url": "/docs",
+    }

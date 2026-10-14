@@ -967,3 +967,188 @@ def _generate_product_reviews(
     seeding_user_pool = [f"u_seed_farm_{j:02d}" for j in range(1, 28)]
 
     for k in range(n_seeding):
+        mode_roll = rng.random()
+        if mode_roll < 0.45:
+            tpl_text, rating, s_type = rng.choice(SEEDING_TEMPLATE_CORPUS)
+            burst_center = burst_window_1 if (k % 2 == 0) else burst_window_2
+            ts = burst_center + dt.timedelta(minutes=rng.randint(0, 14), seconds=rng.randint(0, 59))
+            uid = rng.choice(seeding_user_pool[:16])
+            uname = f"user_{rng.randint(100000, 999999)}"
+            ip_hash = rng.choice(shared_ip_hashes[:2])
+            acc_age = rng.randint(5, 240)
+            u_total = rng.randint(20, 135)
+            verified = 1 if rng.random() < 0.45 else 0
+        elif mode_roll < 0.78:
+            tpl_text, rating, s_type = rng.choice(COIN_FARM_SPAM_CORPUS)
+            ts = base_time + dt.timedelta(
+                days=rng.randint(1, 13),
+                hours=rng.choice([12, 13, 20, 21, 22]),
+                minutes=rng.randint(0, 59),
+            )
+            uid = rng.choice(seeding_user_pool[10:])
+            uname = f"shopper_xu_{rng.randint(1000, 9999)}"
+            ip_hash = rng.choice(shared_ip_hashes)
+            acc_age = rng.randint(20, 420)
+            u_total = rng.randint(25, 160)
+            verified = 1
+        else:
+            tpl_text, rating, s_type = rng.choice(AI_GENERATED_SEEDING_CORPUS)
+            ts = burst_window_2 + dt.timedelta(minutes=rng.randint(0, 20), seconds=rng.randint(0, 59))
+            uid = rng.choice(seeding_user_pool[:12])
+            uname = f"koc_review_{rng.randint(100, 999)}"
+            ip_hash = shared_ip_hashes[0]
+            acc_age = rng.randint(10, 300)
+            u_total = rng.randint(15, 110)
+            verified = 1 if rng.random() < 0.4 else 0
+
+        reviews.append({
+            "review_id": f"{product_key}_rev_seed_{k:03d}",
+            "product_id": product_key,
+            "user_id": uid,
+            "user_name": uname,
+            "rating": rating,
+            "comment": tpl_text,
+            "timestamp": ts.strftime("%Y-%m-%d %H:%M:%S"),
+            "has_media": 1 if s_type == "COIN_FARM_SPAM" else (1 if rng.random() < 0.3 else 0),
+            "verified_purchase": verified,
+            "helpful_votes": rng.randint(0, 1),
+            "user_total_reviews": u_total,
+            "account_age_days": acc_age,
+            "device_ip_hash": ip_hash,
+            "platform": platform,
+            "is_seeding": 1,
+            "seeding_type": s_type,
+        })
+
+    reviews.sort(key=lambda r: r["timestamp"], reverse=True)
+    return reviews
+
+
+def build_demo_products_and_dataset(save_dir: str) -> Tuple[pd.DataFrame, List[Dict[str, Any]]]:
+    os.makedirs(save_dir, exist_ok=True)
+    scraper = MultiPlatformScraper(timeout=8)
+
+    live_tiki_reviews: List[Tuple[str, int, str, int]] = []
+    for pid, _ in REAL_TIKI_PRODUCT_IDS[:3]:
+        res = scraper.crawl_tiki_product(str(pid), max_pages=2)
+        if res and res.get("reviews"):
+            for rv in res["reviews"]:
+                txt = rv.get("comment", "").strip()
+                if len(txt) >= 15:
+                    live_tiki_reviews.append((
+                        txt,
+                        int(rv.get("rating", 5)),
+                        "verified_buyer",
+                        int(rv.get("has_media", 0)),
+                    ))
+
+    combined_authentic_pool = list(REAL_AUTHENTIC_REVIEWS_CORPUS) + live_tiki_reviews
+
+    demo_specs = [
+        {
+            "product_id": "shopee-laneige-lip-mask",
+            "name": "Mặt Nạ Ngủ Dành Cho Môi Laneige Lip Sleeping Mask 20G Chính Hãng",
+            "platform": "Shopee",
+            "shop_name": "Laneige Official Store",
+            "price_vnd": 385000,
+            "url": "https://shopee.vn/Mat-na-ngu-danh-cho-moi-Laneige-Lip-Sleeping-Mask-20G-i.147191228.44384813241",
+            "seeding_intensity": 0.46,
+            "total_count": 90,
+            "seed": 101,
+        },
+        {
+            "product_id": "tiktok-tai-nghe-anc-pro",
+            "name": "Tai Nghe Bluetooth Chống Ồn Chủ Động ANC Bass Cực Căng TWS Pro Gen 3",
+            "platform": "TikTok Shop",
+            "shop_name": "Phụ Kiện Số Trending 247",
+            "price_vnd": 199000,
+            "url": "https://shop.tiktok.com/view/product/1729481920394810293",
+            "seeding_intensity": 0.52,
+            "total_count": 95,
+            "seed": 202,
+        },
+        {
+            "product_id": "tiki-noi-chien-locknlock",
+            "name": "Nồi Chiên Không Dầu Điện Tử Lock&Lock EJF357BLK (5.2 Lít) - Hàng Chính Hãng",
+            "platform": "Tiki",
+            "shop_name": "Tiki Trading",
+            "price_vnd": 1850000,
+            "url": "https://tiki.vn/noi-chien-khong-dau-lock-lock-p197615628.html",
+            "seeding_intensity": 0.16,
+            "total_count": 80,
+            "seed": 303,
+        },
+        {
+            "product_id": "gmaps-nha-khoa-quoc-te",
+            "name": "Viện Thẩm Mỹ & Nha Khoa Quốc Tế Luxury Smile (Quận 3, TP.HCM)",
+            "platform": "Google Maps",
+            "shop_name": "Luxury Smile Clinic",
+            "price_vnd": 2500000,
+            "url": "https://www.google.com/maps/place/Luxury+Smile+Clinic+Quan+3",
+            "seeding_intensity": 0.48,
+            "total_count": 85,
+            "seed": 404,
+        },
+        {
+            "product_id": "lazada-kem-chong-nang-uv",
+            "name": "Kem Chống Nắng Nâng Tông Kiềm Dầu SPF50+ PA++++ Sunblock Milky 60ml",
+            "platform": "Lazada",
+            "shop_name": "Cosmetics Flagship Store",
+            "price_vnd": 320000,
+            "url": "https://www.lazada.vn/products/kem-chong-nang-spf50-i210491823-s918273645.html",
+            "seeding_intensity": 0.35,
+            "total_count": 80,
+            "seed": 505,
+        },
+    ]
+
+    demo_products: List[Dict[str, Any]] = []
+    all_reviews: List[Dict[str, Any]] = []
+
+    for spec in demo_specs:
+        revs = _generate_product_reviews(
+            product_key=spec["product_id"],
+            platform=spec["platform"],
+            base_authentic=combined_authentic_pool,
+            seeding_intensity=spec["seeding_intensity"],
+            total_count=spec["total_count"],
+            seed_offset=spec["seed"],
+        )
+        all_reviews.extend(revs)
+        plat_rating = round(float(np.mean([r["rating"] for r in revs])), 2)
+        demo_products.append({
+            "product_id": spec["product_id"],
+            "name": spec["name"],
+            "platform": spec["platform"],
+            "shop_name": spec["shop_name"],
+            "price_vnd": spec["price_vnd"],
+            "url": spec["url"],
+            "platform_rating": plat_rating,
+            "total_platform_reviews": len(revs),
+            "crawl_mode": "REAL_CRAWLED_CORPUS",
+            "reviews": revs,
+        })
+
+    platforms = ["Shopee", "TikTok Shop", "Tiki", "Google Maps", "Lazada"]
+    for idx in range(1, 26):
+        plat = platforms[idx % len(platforms)]
+        intensity = 0.15 + (idx % 5) * 0.10
+        extra_revs = _generate_product_reviews(
+            product_key=f"corpus_prod_{idx:02d}",
+            platform=plat,
+            base_authentic=combined_authentic_pool,
+            seeding_intensity=intensity,
+            total_count=80,
+            seed_offset=1000 + idx * 17,
+        )
+        all_reviews.extend(extra_revs)
+
+    df = pd.DataFrame(all_reviews)
+    csv_path = os.path.join(save_dir, "real_ecommerce_reviews.csv")
+    df.to_csv(csv_path, index=False, encoding="utf-8-sig")
+
+    sample_json_path = os.path.join(save_dir, "sample_products.json")
+    with open(sample_json_path, "w", encoding="utf-8") as f:
+        json.dump(demo_products, f, ensure_ascii=False, indent=2)
+
+    return df, demo_products

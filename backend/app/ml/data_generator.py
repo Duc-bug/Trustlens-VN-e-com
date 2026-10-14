@@ -205,3 +205,211 @@ class MultiPlatformScraper:
         if cookie:
             headers["Cookie"] = cookie
 
+        # Step 1: Fetch Live Shop Core Info
+        shop_name = f"Shopee Store #{shopid}"
+        shop_username = f"shop_{shopid}"
+        shop_avatar_url = ""
+        seller_userid = None
+        last_active_ts = None
+
+        try:
+            core_url = f"https://shopee.vn/api/v4/shop/get_shop_core_info?shopid={shopid}"
+            r_core = self.session.get(core_url, headers=headers, timeout=self.timeout)
+            if r_core.status_code == 200:
+                c_data = (r_core.json().get("data") or {})
+                if c_data.get("userid"):
+                    seller_userid = int(c_data["userid"])
+                    shop_name = c_data.get("shop_name") or shop_name
+                    acc = c_data.get("account") or {}
+                    shop_username = acc.get("username") or shop_username
+                    portrait = acc.get("portrait") or ""
+                    if portrait:
+                        shop_avatar_url = f"{SHOPEE_CDN_BASE}{portrait}"
+                    last_active_ts = c_data.get("last_active_time")
+        except Exception as exc:
+            logger.warning("Shopee get_shop_core_info error: %s", exc)
+
+        # Step 2: Fetch Live Shop Categories & Total Products Count
+        shop_categories: List[Dict[str, Any]] = []
+        total_shop_items = 0
+        try:
+            cat_url = f"https://shopee.vn/api/v4/shop/get_categories?limit=25&offset=0&shopid={shopid}"
+            r_cat = self.session.get(cat_url, headers=headers, timeout=self.timeout)
+            if r_cat.status_code == 200:
+                cats_raw = ((r_cat.json().get("data") or {}).get("shop_categories")) or []
+                for c in cats_raw:
+                    c_tot = int(c.get("total", 0) or 0)
+                    total_shop_items += c_tot
+                    shop_categories.append({
+                        "category_id": c.get("shop_category_id"),
+                        "name": c.get("display_name", "Danh mục"),
+                        "total_items": c_tot,
+                        "image_url": f"{SHOPEE_CDN_BASE}{c['image']}" if c.get("image") else "",
+                    })
+        except Exception as exc:
+            logger.warning("Shopee get_categories error: %s", exc)
+
+        # Step 3: Multi-threaded Live Review & Product Metadata Crawling (28 parallel workers)
+        raw_items_by_cmtid: Dict[int, Dict[str, Any]] = {}
+        first_page_by_star: Dict[int, List[Dict[str, Any]]] = {5: [], 4: [], 3: [], 2: [], 1: []}
+
+        # 3a. If user provided a Cookie or if get_ratings is accessible, try item/get_ratings first
+        if itemid:
+            for ir_offset in (0, 50, 100):
+                try:
+                    ir_url = (
+                        f"https://shopee.vn/api/v4/item/get_ratings"
+                        f"?filter=0&flag=1&itemid={itemid}&limit=50&offset={ir_offset}&shopid={shopid}&type=0"
+                    )
+                    r_ir = self.session.get(ir_url, headers=headers, timeout=5)
+                    if r_ir.status_code == 200:
+                        ir_list = ((r_ir.json().get("data") or {}).get("ratings")) or []
+                        if not ir_list:
+                            break
+                        for it in ir_list:
+                            cid = int(it.get("cmtid") or 0)
+                            if cid:
+                                raw_items_by_cmtid[cid] = it
+                    else:
+                        break
+                except Exception:
+                    break
+
+        # 3b. Execute 28 parallel requests to `seller_operation/get_shop_ratings_new` (type=1..5)
+        if seller_userid:
+            batch_Args: List[Tuple[int, int]] = (
+                [(5, offset) for offset in range(0, 1000, 50)]  # 20 pages = up to 1,000 5★ ratings
+                + [(4, offset) for offset in (0, 50, 100, 150)]  # 4 pages = up to 200 4★ ratings
+                + [(3, offset) for offset in (0, 50)]            # 2 pages = up to 100 3★ ratings
+                + [(2, 0), (1, 0)]                               # 2 pages = up to 100 1★-2★ ratings
+            )
+
+            def _fetch_rating_page(args: Tuple[int, int]) -> Tuple[int, int, List[Dict[str, Any]]]:
+                star_type, offset = args
+                ep = (
+                    f"https://shopee.vn/api/v4/seller_operation/get_shop_ratings_new"
+                    f"?limit=50&offset={offset}&shopid={shopid}&type={star_type}&userid={seller_userid}"
+                )
+                try:
+                    resp = self.session.get(ep, headers=headers, timeout=7)
+                    if resp.status_code == 200:
+                        items = ((resp.json().get("data") or {}).get("items")) or []
+                        return star_type, offset, items
+                except Exception:
+                    pass
+                return star_type, offset, []
+
+            with concurrent.futures.ThreadPoolExecutor(max_workers=28) as executor:
+                for star_type, offset, page_items in executor.map(_fetch_rating_page, batch_Args):
+                    if offset == 0 and star_type in first_page_by_star and page_items:
+                        first_page_by_star[star_type] = page_items
+                    for it in page_items:
+                        cid = int(it.get("cmtid") or 0)
+                        if cid and cid not in raw_items_by_cmtid:
+                            raw_items_by_cmtid[cid] = it
+
+        all_raw_ratings = list(raw_items_by_cmtid.values())
+        if not all_raw_ratings:
+            return None
+
+        # Step 3c: Compute Unbiased True Star Distribution & True Platform Rating via Poisson Arrival MLE
+        # Since Shopee returns newest 50 reviews per star tier s in {5,4,3,2,1}, arrival rate lambda_s = N_s / delta_t_s
+        arrival_rates: Dict[int, float] = {}
+        for s in (5, 4, 3, 2, 1):
+            p_items = first_page_by_star.get(s) or []
+            if len(p_items) >= 2:
+                ctimes = [int(x.get("ctime") or 0) for x in p_items if x.get("ctime")]
+                if len(ctimes) >= 2:
+                    dt_span = max(60.0, float(max(ctimes) - min(ctimes)))
+                    arrival_rates[s] = float(len(ctimes)) / dt_span
+                else:
+                    arrival_rates[s] = 0.0
+            elif len(p_items) == 1:
+                arrival_rates[s] = 1.0 / (86400.0 * 90.0)
+            else:
+                arrival_rates[s] = 0.0
+
+        total_lambda = sum(arrival_rates.values())
+        if total_lambda > 0:
+            true_star_weights = {s: arrival_rates[s] / total_lambda for s in (5, 4, 3, 2, 1)}
+            true_platform_rating = round(
+                sum(s * true_star_weights[s] for s in (5, 4, 3, 2, 1)), 2
+            )
+        else:
+            raw_stars_all = [max(1, min(5, int(r.get("rating_star", 5) or 5))) for r in all_raw_ratings]
+            true_platform_rating = round(float(np.mean(raw_stars_all)), 2) if raw_stars_all else 4.85
+            true_star_weights = {
+                s: raw_stars_all.count(s) / max(1.0, float(len(raw_stars_all)))
+                for s in (5, 4, 3, 2, 1)
+            }
+
+        true_star_share_pct = {
+            str(s): round(true_star_weights[s] * 100.0, 2) for s in (5, 4, 3, 2, 1)
+        }
+
+        # Step 4: Extract Target Product Metadata, Shop Top Products, Variations, and Detailed Ratings
+        slug_title = self._extract_title_from_url(resolved_url, "Shopee")
+        detected_product_name = slug_title or f"Sản phẩm Chính hãng tại {shop_name}"
+        detected_product_image = shop_avatar_url
+        variations_set = set()
+        shop_products_map: Dict[int, Dict[str, Any]] = {}
+
+        star_counts = {5: 0, 4: 0, 3: 0, 2: 0, 1: 0}
+        qual_scores, seller_scores, deliv_scores = [], [], []
+
+        exact_item_text_reviews: List[Dict[str, Any]] = []
+        exact_item_media_or_star_reviews: List[Dict[str, Any]] = []
+        other_shop_text_reviews: List[Dict[str, Any]] = []
+        other_shop_media_reviews: List[Dict[str, Any]] = []
+        other_shop_star_only_reviews: List[Dict[str, Any]] = []
+
+        is_official_mall = any(
+            kw in (shop_name + " " + shop_username).lower()
+            for kw in ("official", "mall", "flagship", "chính hãng", "store")
+        )
+
+        # Sort raw ratings newest-first for consistent extraction
+        all_raw_ratings.sort(key=lambda x: int(x.get("ctime") or 0), reverse=True)
+
+        # Count exact real occurrences of each userid and (userid, itemid) in the scanned Shopee ratings
+        real_user_freq_in_shop: Dict[str, int] = {}
+        real_user_item_freq: Dict[Tuple[str, int], int] = {}
+        target_id_int = int(itemid) if itemid else 0
+
+        for r_item in all_raw_ratings:
+            u_val = str(r_item.get("userid") or r_item.get("author_shopid") or "")
+            p_list = r_item.get("product_items") or []
+            chosen_p = p_list[0] if p_list else {}
+            if target_id_int and p_list:
+                for pi in p_list:
+                    if int(pi.get("itemid") or 0) == target_id_int:
+                        chosen_p = pi
+                        break
+            it_val = int(chosen_p.get("itemid") or r_item.get("itemid") or 0)
+            if u_val:
+                real_user_freq_in_shop[u_val] = real_user_freq_in_shop.get(u_val, 0) + 1
+                real_user_item_freq[(u_val, it_val)] = real_user_item_freq.get((u_val, it_val), 0) + 1
+
+        form_header_pattern = re.compile(
+            r"(?im)^(kinh nghiệm sử dụng|mẹo|bao bì/mẫu mã|bao bì|mẫu mã|hương thơm|mùi hương|"
+            r"dành cho da|tác dụng|công dụng|kết cấu|độ thẩm thấu|độ bền màu|màu sắc|"
+            r"chất liệu|đúng với mô tả|tính năng nổi bật|chất lượng sản phẩm)\s*:\s*"
+        )
+
+        for r in all_raw_ratings:
+            r_star = int(r.get("rating_star", 5) or 5)
+            r_star = max(1, min(5, r_star))
+            star_counts[r_star] = star_counts.get(r_star, 0) + 1
+
+            det = r.get("detailed_rating") or {}
+            if det.get("product_quality"):
+                qual_scores.append(float(det["product_quality"]))
+            if det.get("seller_service"):
+                seller_scores.append(float(det["seller_service"]))
+            if det.get("delivery_service"):
+                deliv_scores.append(float(det["delivery_service"]))
+
+            p_items = r.get("product_items") or []
+            # Select target itemid if present in the order's product_items; otherwise prefer non-gift main item
+            first_prod = p_items[0] if p_items else {}
+            if p_items:

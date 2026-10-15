@@ -452,3 +452,198 @@ def train_and_save_all(models_dir: str) -> Dict[str, Any]:
             "seeding_ratio_pct": round(float(np.mean(y) * 100), 1),
             "total_features": int(len(all_cols)),
             "nlp_features_count": len(nlp_cols),
+            "temporal_behavioral_count": len(temp_cols) + len(beh_cols),
+            "graph_gat_features_count": len(graph_cols),
+            "cv_folds": 5,
+            "platforms_covered": [
+                "Shopee",
+                "TikTok Shop",
+                "Tiki",
+                "Google Maps",
+                "Lazada",
+            ],
+        },
+        "models": [
+            {
+                "id": "logreg_nlp",
+                "name": "Logistic Regression (TF-IDF + NLP Baseline)",
+                "short_name": "LogReg (NLP)",
+                "feature_set": f"NLP Only ({len(nlp_cols)} features)",
+                "is_proposed": False,
+                "latency_ms": lat_logreg,
+                "cv_5fold": cv_logreg,
+                "paired_ttest": ttest_logreg,
+                **m_logreg,
+            },
+            {
+                "id": "rf_nlp_temp",
+                "name": "Random Forest (NLP + Temporal Burstiness)",
+                "short_name": "Random Forest",
+                "feature_set": f"NLP + Temporal ({len(cols_rf)} features)",
+                "is_proposed": False,
+                "latency_ms": lat_rf,
+                "cv_5fold": cv_rf,
+                "paired_ttest": ttest_rf,
+                **m_rf,
+            },
+            {
+                "id": "xgb_tabular",
+                "name": "XGBoost (NLP + Temporal + Account Tabular)",
+                "short_name": "XGBoost (Tabular)",
+                "feature_set": f"NLP + Temporal + Behavioral ({len(cols_xgb)} features)",
+                "is_proposed": False,
+                "latency_ms": lat_xgb,
+                "cv_5fold": cv_xgb,
+                "paired_ttest": ttest_xgb,
+                **m_xgb,
+            },
+            {
+                "id": "lgbm_graph_gat",
+                "name": "LightGBM + Supervised GAT (Single Graph-GBDT)",
+                "short_name": "LightGBM + GAT",
+                "feature_set": f"Full Features ({len(all_cols)} features)",
+                "is_proposed": False,
+                "latency_ms": lat_lgbm,
+                "cv_5fold": cv_lgbm,
+                "paired_ttest": ttest_lgbm,
+                **m_lgbm,
+            },
+            {
+                "id": "proposed_hybrid_graph_lgbm",
+                "name": "TrustLens Hybrid (Stacking LGBM+XGB+RF + Supervised GAT + Calibration)",
+                "short_name": "TrustLens Hybrid (Proposed)",
+                "feature_set": f"NLP + Temporal + Behavioral + Supervised GAT ({len(all_cols)} features)",
+                "is_proposed": True,
+                "latency_ms": lat_hybrid,
+                "cv_5fold": cv_hybrid,
+                "paired_ttest": {
+                    "t_stat": 0.0,
+                    "p_value": 0.0,
+                    "p_value_str": "Baseline đối chiếu",
+                    "significant": True,
+                },
+                **m_hybrid,
+            },
+        ],
+        "ablation_study": [
+            {
+                "configuration": "1. Chỉ dùng NLP Tiếng Việt (TF-IDF + SVD + Entropy + Lexicon)",
+                "f1_score": m_logreg["f1_score"],
+                "roc_auc": m_logreg["roc_auc"],
+                "gain_f1": 0.0,
+            },
+            {
+                "configuration": "2. + Đặc trưng Đột biến Thời gian (Temporal Burstiness 15m & Z-Score)",
+                "f1_score": m_rf["f1_score"],
+                "roc_auc": m_rf["roc_auc"],
+                "gain_f1": round(m_rf["f1_score"] - m_logreg["f1_score"], 2),
+            },
+            {
+                "configuration": "3. + Hành vi Tài khoản (Account Velocity, Độ lệch Sao & Mua hàng)",
+                "f1_score": m_xgb["f1_score"],
+                "roc_auc": m_xgb["roc_auc"],
+                "gain_f1": round(m_xgb["f1_score"] - m_logreg["f1_score"], 2),
+            },
+            {
+                "configuration": "4. + Đồ thị NetworkX (PageRank, K-Core, Louvain Q) & Supervised GAT",
+                "f1_score": m_lgbm["f1_score"],
+                "roc_auc": m_lgbm["roc_auc"],
+                "gain_f1": round(m_lgbm["f1_score"] - m_logreg["f1_score"], 2),
+            },
+            {
+                "configuration": "5. + Stacking Ensemble & Hiệu chuẩn Xác suất Isotonic (Full TrustLens)",
+                "f1_score": m_hybrid["f1_score"],
+                "roc_auc": m_hybrid["roc_auc"],
+                "gain_f1": round(m_hybrid["f1_score"] - m_logreg["f1_score"], 2),
+            },
+        ],
+        "global_shap_importance": global_shap_summary,
+    }
+
+    all_5_models_bundle = {
+        "logreg_nlp": {
+            "id": "logreg_nlp",
+            "short_name": "LogReg (NLP)",
+            "name": "Logistic Regression (NLP Baseline)",
+            "feature_set": f"NLP ({len(nlp_cols)} đặc trưng)",
+            "model": prod_logreg,
+            "cols": nlp_cols,
+            "threshold": 0.50,
+            "cv_f1": cv_logreg["f1_mean"],
+            "roc_auc": m_logreg["roc_auc"],
+        },
+        "rf_nlp_temp": {
+            "id": "rf_nlp_temp",
+            "short_name": "Random Forest",
+            "name": "Random Forest (NLP + Thời gian)",
+            "feature_set": f"NLP + Thời gian ({len(cols_rf)} đặc trưng)",
+            "model": prod_rf,
+            "cols": cols_rf,
+            "threshold": 0.50,
+            "cv_f1": cv_rf["f1_mean"],
+            "roc_auc": m_rf["roc_auc"],
+        },
+        "xgb_tabular": {
+            "id": "xgb_tabular",
+            "short_name": "XGBoost",
+            "name": "XGBoost (NLP + Thời gian + Hành vi)",
+            "feature_set": f"NLP + Thời gian + Hành vi ({len(cols_xgb)} đặc trưng)",
+            "model": prod_xgb,
+            "cols": cols_xgb,
+            "threshold": 0.50,
+            "cv_f1": cv_xgb["f1_mean"],
+            "roc_auc": m_xgb["roc_auc"],
+        },
+        "lgbm_graph_gat": {
+            "id": "lgbm_graph_gat",
+            "short_name": "LightGBM + GAT",
+            "name": "LightGBM + Đồ thị GAT (Single GBDT)",
+            "feature_set": f"Toàn bộ ({len(all_cols)} đặc trưng)",
+            "model": prod_hybrid,
+            "cols": all_cols,
+            "threshold": 0.50,
+            "cv_f1": cv_lgbm["f1_mean"],
+            "roc_auc": m_lgbm["roc_auc"],
+        },
+        "proposed_hybrid_graph_lgbm": {
+            "id": "proposed_hybrid_graph_lgbm",
+            "short_name": "TrustLens Stacking",
+            "name": "TrustLens Stacking Ensemble (Đa mô hình + GAT)",
+            "feature_set": f"Đa mô hình + Hiệu chuẩn Isotonic ({len(all_cols)} đặc trưng)",
+            "model": prod_stacking,
+            "calibrator": prod_stack_calibrator,
+            "cols": all_cols,
+            "threshold": opt_tau,
+            "cv_f1": cv_hybrid["f1_mean"],
+            "roc_auc": m_hybrid["roc_auc"],
+        },
+    }
+
+    joblib.dump(all_5_models_bundle, os.path.join(models_dir, "all_5_models.pkl"))
+    joblib.dump(prod_hybrid, os.path.join(models_dir, "hybrid_lgbm_model.pkl"))
+    joblib.dump(prod_calibrator, os.path.join(models_dir, "calibration_isotonic.pkl"))
+    joblib.dump(engine, os.path.join(models_dir, "feature_engine.pkl"))
+
+    metrics_path = os.path.join(models_dir, "metrics.json")
+    with open(metrics_path, "w", encoding="utf-8") as f:
+        json.dump(benchmarks_payload, f, ensure_ascii=False, indent=2)
+
+    return benchmarks_payload
+
+
+if __name__ == "__main__":
+    import sys
+
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+    logging.basicConfig(level=logging.INFO)
+    target_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "models_saved")
+    res = train_and_save_all(target_dir)
+    print("Trained 5 models successfully with Stratified 5-Fold CV! Summary:")
+    for m in res["models"]:
+        cv = m["cv_5fold"]
+        tt = m["paired_ttest"]
+        print(
+            f" - {m['name']}: Holdout F1={m['f1_score']}%, 5-Fold F1={cv['f1_mean']}%+-{cv['f1_std']}%, "
+            f"ROC-AUC={m['roc_auc']}%, MCC={m['mcc']}%, Brier={m['brier_score']}, p={tt['p_value_str']}"
+        )

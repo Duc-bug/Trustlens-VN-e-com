@@ -426,3 +426,124 @@ class FeatureEngine:
 
         temp_beh_df = pd.DataFrame(
             {
+                "temp_reviews_in_15m": reviews_in_15m,
+                "temp_inter_arrival_log_sec": inter_arrival_log,
+                "temp_burst_zscore": burst_zscore,
+                "beh_account_age_days": acc_age,
+                "beh_user_review_velocity": velocity,
+                "beh_verified_purchase": verified,
+                "beh_rating_deviation": rating_dev,
+                "beh_helpful_votes": helpful,
+            },
+            index=df.index,
+        )
+
+        df_time = pd.DataFrame(
+            {
+                "dt": timestamps,
+                "rating": ratings,
+                "in_15m": reviews_in_15m,
+            }
+        )
+        df_time["bucket"] = df_time["dt"].dt.strftime("%d/%m %H:00")
+        grouped = df_time.groupby("bucket", as_index=False).agg(
+            total_reviews=("rating", "count"),
+            five_star_reviews=("rating", lambda s: int(np.sum(s >= 5))),
+            max_15m_density=("in_15m", "max"),
+        )
+        burst_timeline = []
+        for _, row in grouped.iterrows():
+            tot = int(row["total_reviews"])
+            five_s = int(row["five_star_reviews"])
+            is_spike = bool(tot >= 5 or row["max_15m_density"] >= 4)
+            burst_timeline.append(
+                {
+                    "time_bucket": str(row["bucket"]),
+                    "total_reviews": tot,
+                    "five_star_reviews": five_s,
+                    "organic_reviews": max(0, tot - (five_s if is_spike else 0)),
+                    "seeding_spike_reviews": five_s if is_spike else 0,
+                    "is_burst_anomaly": is_spike,
+                }
+            )
+
+        return temp_beh_df, burst_timeline
+
+    def fit_transform(self, df: pd.DataFrame) -> Tuple[pd.DataFrame, Dict[str, Any]]:
+        comments = df["comment"].fillna("").astype(str).tolist()
+        cleaned_comments = [self._clean_comment_for_similarity(c) for c in comments]
+        tfidf_sparse = self.tfidf.fit_transform(cleaned_comments)
+        tfidf_mat = tfidf_sparse.toarray().astype(np.float32)
+
+        nlp_df = self._extract_nlp_intrinsic(df, tfidf_mat)
+        self.is_fitted = True
+        temp_beh_df, burst_timeline = self._extract_temporal_and_behavioral(df)
+
+        graph_dfs = []
+        last_graph_payload: Dict[str, Any] = {"nodes": [], "links": [], "summary": {}}
+        prod_ids = (
+            df["product_id"].astype(str).to_numpy()
+            if "product_id" in df.columns
+            else np.full(len(df), "default")
+        )
+        has_labels = "is_seeding" in df.columns
+
+        for pid in np.unique(prod_ids):
+            mask = prod_ids == pid
+            sub_df = df.loc[mask]
+            sub_tfidf = tfidf_mat[mask]
+            sub_y = (
+                sub_df["is_seeding"].astype(int).to_numpy() if has_labels else None
+            )
+            g_df, g_payload = self.graph_engine.extract_product_graph_features(
+                sub_df, sub_tfidf, y_labels=sub_y
+            )
+            graph_dfs.append(g_df)
+            last_graph_payload = g_payload
+
+        full_graph_df = pd.concat(graph_dfs).reindex(df.index)
+        X_full = pd.concat([nlp_df, temp_beh_df, full_graph_df], axis=1).fillna(0.0)
+
+        self.tabular_nlp_columns = list(nlp_df.columns) + list(temp_beh_df.columns)
+        self.feature_columns = list(X_full.columns)
+
+        return X_full, {"burst_timeline": burst_timeline, "graph": last_graph_payload}
+
+    def transform(self, df: pd.DataFrame) -> Tuple[pd.DataFrame, Dict[str, Any]]:
+        if not self.is_fitted:
+            return self.fit_transform(df)
+
+        comments = df["comment"].fillna("").astype(str).tolist()
+        cleaned_comments = [self._clean_comment_for_similarity(c) for c in comments]
+        tfidf_sparse = self.tfidf.transform(cleaned_comments)
+        tfidf_mat = tfidf_sparse.toarray().astype(np.float32)
+
+        nlp_df = self._extract_nlp_intrinsic(df, tfidf_mat)
+        temp_beh_df, burst_timeline = self._extract_temporal_and_behavioral(df)
+
+        graph_dfs = []
+        last_graph_payload: Dict[str, Any] = {"nodes": [], "links": [], "summary": {}}
+        prod_ids = (
+            df["product_id"].astype(str).to_numpy()
+            if "product_id" in df.columns
+            else np.full(len(df), "default")
+        )
+
+        for pid in np.unique(prod_ids):
+            mask = prod_ids == pid
+            sub_df = df.loc[mask]
+            sub_tfidf = tfidf_mat[mask]
+            g_df, g_payload = self.graph_engine.extract_product_graph_features(
+                sub_df, sub_tfidf, y_labels=None
+            )
+            graph_dfs.append(g_df)
+            last_graph_payload = g_payload
+
+        full_graph_df = pd.concat(graph_dfs).reindex(df.index)
+        X_full = pd.concat([nlp_df, temp_beh_df, full_graph_df], axis=1).fillna(0.0)
+        for col in self.feature_columns:
+            if col not in X_full.columns:
+                X_full[col] = 0.0
+        X_full = X_full[self.feature_columns]
+
+        return X_full, {"burst_timeline": burst_timeline, "graph": last_graph_payload}

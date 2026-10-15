@@ -271,3 +271,228 @@ class BehavioralGraphEngine:
                 dt_min = abs(ts_sec[i] - ts_sec[j]) / 60.0
                 text_sim = float(sim_matrix[i, j])
                 same_user = user_ids[i] == user_ids[j]
+                same_ip = (ip_hashes[i] == ip_hashes[j]) and (
+                    not ip_hashes[i].startswith("ip_")
+                )
+                same_item = (
+                    (not item_ids[i])
+                    or (item_ids[i] == "0")
+                    or (item_ids[i] == item_ids[j])
+                )
+                both_high_5star = (ratings[i] >= 5.0) and (ratings[j] >= 5.0)
+
+                weight = 0.0
+                reasons = []
+
+                if same_user:
+                    weight += 0.85
+                    reasons.append("Trùng tài khoản (Repeat User)")
+                if same_ip:
+                    weight += 0.65
+                    shared_ip_counts[i] += 1
+                    shared_ip_counts[j] += 1
+                    reasons.append("Trùng cụm Thiết bị/IP")
+                if dt_min <= 15.0 and both_high_5star and (same_item or text_sim >= 0.35):
+                    burst_w = 0.50 * (1.0 - dt_min / 16.0)
+                    weight += burst_w
+                    temporal_co_edges[i] += 1
+                    temporal_co_edges[j] += 1
+                    reasons.append(f"Đăng cùng khung giờ ({dt_min:.1f} phút)")
+                if text_sim >= 0.42:
+                    sim_w = 0.75 * text_sim
+                    weight += sim_w
+                    text_dup_edges[i] += 1
+                    text_dup_edges[j] += 1
+                    reasons.append(f"Tương đồng văn mẫu ({int(text_sim * 100)}%)")
+
+                if weight >= 0.38:
+                    G.add_edge(i, j, weight=float(weight), reason=", ".join(reasons))
+                    adj[i, j] = weight
+                    adj[j, i] = weight
+                    edge_records.append(
+                        {
+                            "source_idx": i,
+                            "target_idx": j,
+                            "weight": round(float(weight), 3),
+                            "reason": ", ".join(reasons),
+                        }
+                    )
+
+        # 1. PageRank, Degree Centrality, Local Clustering
+        try:
+            pagerank = nx.pagerank(G, weight="weight", alpha=0.85)
+        except Exception:
+            pagerank = {i: 1.0 / max(1, n) for i in range(n)}
+
+        deg_cent = nx.degree_centrality(G)
+        clustering = nx.clustering(G, weight="weight")
+
+        # 2. K-Core Decomposition (identifies tightly connected collusion subgraphs)
+        G_simple = G.copy()
+        G_simple.remove_edges_from(nx.selfloop_edges(G_simple))
+        try:
+            kcore_map = nx.core_number(G_simple)
+        except Exception:
+            kcore_map = {i: int(G.degree(i)) for i in range(n)}
+
+        # 3. Louvain / Greedy Modularity Community Detection
+        comp_sizes: Dict[int, int] = {}
+        comp_id_map: Dict[int, int] = {}
+        modularity_q = 0.0
+
+        if G.number_of_edges() > 0:
+            try:
+                communities = list(
+                    nx.algorithms.community.greedy_modularity_communities(
+                        G, weight="weight"
+                    )
+                )
+                modularity_q = float(
+                    nx.algorithms.community.modularity(G, communities, weight="weight")
+                )
+                for comm_idx, comm in enumerate(communities):
+                    c_size = len(comm)
+                    for node_i in comm:
+                        comp_sizes[int(node_i)] = c_size
+                        comp_id_map[int(node_i)] = comm_idx
+            except Exception:
+                for comp_idx, comp in enumerate(nx.connected_components(G)):
+                    c_size = len(comp)
+                    for node_i in comp:
+                        comp_sizes[int(node_i)] = c_size
+                        comp_id_map[int(node_i)] = comp_idx
+        else:
+            for i in range(n):
+                comp_sizes[i] = 1
+                comp_id_map[i] = i
+
+        # 4. Construct node intrinsic matrix X (N x 6) for Supervised GAT
+        pr_arr = np.array(
+            [pagerank.get(i, 0.0) * n for i in range(n)], dtype=np.float32
+        )
+        deg_arr = np.array([deg_cent.get(i, 0.0) for i in range(n)], dtype=np.float32)
+        clust_arr = np.array(
+            [clustering.get(i, 0.0) for i in range(n)], dtype=np.float32
+        )
+        kcore_arr = np.array(
+            [float(kcore_map.get(i, 0)) for i in range(n)], dtype=np.float32
+        )
+        new_acc_signal = np.clip(1.0 - (acc_ages / 365.0), 0.0, 1.0).astype(
+            np.float32
+        )
+        hyper_activity = np.clip(u_totals / 100.0, 0.0, 1.5).astype(np.float32)
+        sim_peak = (
+            np.max(sim_matrix - np.eye(n), axis=1).clip(0.0, 1.0).astype(np.float32)
+        )
+
+        X_node = np.stack(
+            [pr_arr, deg_arr, clust_arr, new_acc_signal, hyper_activity, sim_peak],
+            axis=1,
+        )
+
+        # If ground-truth labels are passed during training, update GAT weights via backprop
+        if y_labels is not None and len(y_labels) == n:
+            self.gat.fit_supervised(X_node, adj, y_labels, epochs=30, lr=0.04)
+
+        gat_emb, attn_weights, gat_readout_prob = self.gat.forward(X_node, adj)
+
+        # Combine attention-propagated anomaly with supervised GAT readout probability
+        local_raw_anomaly = (
+            0.26 * deg_arr
+            + 0.22 * sim_peak
+            + 0.18 * new_acc_signal
+            + 0.14 * np.clip(shared_ip_counts / 5.0, 0.0, 1.0)
+            + 0.10 * np.clip(temporal_co_edges / 6.0, 0.0, 1.0)
+            + 0.10 * np.clip(kcore_arr / 6.0, 0.0, 1.0)
+        )
+        attn_propagated = (attn_weights @ local_raw_anomaly).astype(np.float32)
+        neighbor_suspect_score = (
+            0.65 * attn_propagated + 0.35 * gat_readout_prob
+        ).astype(np.float32)
+
+        feat_df = pd.DataFrame(
+            {
+                "graph_pagerank": pr_arr,
+                "graph_degree_centrality": deg_arr,
+                "graph_clustering_coeff": clust_arr,
+                "graph_cluster_size": [float(comp_sizes.get(i, 1)) for i in range(n)],
+                "graph_kcore_number": kcore_arr,
+                "graph_community_modularity": np.full(
+                    n, max(0.0, modularity_q), dtype=np.float32
+                ),
+                "graph_shared_ip_links": shared_ip_counts,
+                "graph_temporal_co_edges": temporal_co_edges,
+                "graph_text_dup_edges": text_dup_edges,
+                "graph_neighbor_suspect_score": neighbor_suspect_score,
+                "graph_gat_emb_0": gat_emb[:, 0],
+                "graph_gat_emb_1": gat_emb[:, 1],
+                "graph_gat_emb_2": gat_emb[:, 2],
+                "graph_gat_emb_3": gat_emb[:, 3],
+            },
+            index=df_prod.index,
+        )
+
+        # Build Interactive Graph Visualization Payload (top 42 nodes for crisp rendering)
+        ranked_indices = np.argsort(-(deg_arr + 0.5 * neighbor_suspect_score))[:42]
+        selected_set = set(int(idx) for idx in ranked_indices)
+
+        vis_nodes = []
+        for idx in ranked_indices:
+            i = int(idx)
+            row = df_prod.iloc[i]
+            vis_nodes.append(
+                {
+                    "id": str(row.get("review_id", f"rev_{i}")),
+                    "user_id": str(row.get("user_id", f"u_{i}")),
+                    "user_name": str(row.get("user_name", f"User #{i}")),
+                    "rating": int(row.get("rating", 5)),
+                    "degree": int(G.degree(i)),
+                    "cluster_id": int(comp_id_map.get(i, 0)),
+                    "cluster_size": int(comp_sizes.get(i, 1)),
+                    "pagerank": round(float(pr_arr[i]), 3),
+                    "suspect_score": round(float(neighbor_suspect_score[i]), 3),
+                    "comment_preview": str(row.get("comment", ""))[:90],
+                    "timestamp": str(row.get("timestamp", "")),
+                }
+            )
+
+        vis_links = []
+        edge_records_sorted = sorted(
+            edge_records, key=lambda x: x["weight"], reverse=True
+        )
+        for edge in edge_records_sorted:
+            u_i = edge["source_idx"]
+            v_i = edge["target_idx"]
+            if u_i in selected_set and v_i in selected_set:
+                vis_links.append(
+                    {
+                        "source": str(
+                            df_prod.iloc[u_i].get("review_id", f"rev_{u_i}")
+                        ),
+                        "target": str(
+                            df_prod.iloc[v_i].get("review_id", f"rev_{v_i}")
+                        ),
+                        "weight": edge["weight"],
+                        "reason": edge["reason"],
+                    }
+                )
+                if len(vis_links) >= 95:
+                    break
+
+        suspicious_clusters = sum(1 for sz in set(comp_sizes.values()) if sz >= 3)
+        graph_payload = {
+            "nodes": vis_nodes,
+            "links": vis_links,
+            "summary": {
+                "total_nodes": int(n),
+                "total_edges": int(G.number_of_edges()),
+                "largest_cluster_size": int(
+                    max(comp_sizes.values()) if comp_sizes else 1
+                ),
+                "suspicious_clusters_count": max(1, suspicious_clusters),
+                "graph_density": round(float(nx.density(G)), 4) if n > 1 else 0.0,
+                "modularity_q": round(float(modularity_q), 4),
+                "max_kcore": int(max(kcore_map.values()) if kcore_map else 0),
+            },
+        }
+        return feat_df, graph_payload

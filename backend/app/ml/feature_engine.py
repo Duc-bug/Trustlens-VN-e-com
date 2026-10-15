@@ -272,3 +272,157 @@ class FeatureEngine:
                 sent_mismatch[i] = 0.90
             elif neg_c >= 1 and ratings[i] >= 5.0:
                 sent_mismatch[i] = 0.85
+            elif (hype + ai_f) >= 2 and nuance == 0 and ratings[i] >= 5.0:
+                sent_mismatch[i] = 0.65
+            else:
+                sent_mismatch[i] = abs(star_norm - min(1.0, 0.5 + 0.2 * (hype - neg_c))) * 0.3
+
+        # Compute domain-independent max cosine similarity within each product group using char_wb 3-5 grams
+        # so out-of-vocabulary domain words (skincare, fashion, food) never cause false similarity spikes
+        max_cos_sim = np.zeros(n, dtype=np.float32)
+        prod_ids = (
+            df["product_id"].astype(str).to_numpy()
+            if "product_id" in df.columns
+            else np.full(n, "default")
+        )
+
+        for pid in np.unique(prod_ids):
+            idx = np.where((prod_ids == pid) & is_valid_sim_text)[0]
+            if len(idx) > 1:
+                sub_texts = [cleaned_texts[k].lower() for k in idx]
+                try:
+                    local_vec = TfidfVectorizer(
+                        analyzer="char_wb", ngram_range=(3, 5), min_df=1, sublinear_tf=True
+                    )
+                    sub_mat = local_vec.fit_transform(sub_texts)
+                    sim = cosine_similarity(sub_mat)
+                    np.fill_diagonal(sim, 0.0)
+                    max_cos_sim[idx] = np.max(sim, axis=1).clip(0.0, 1.0)
+                except Exception:
+                    sub_mat = tfidf_mat[idx]
+                    sim = cosine_similarity(sub_mat)
+                    np.fill_diagonal(sim, 0.0)
+                    max_cos_sim[idx] = np.max(sim, axis=1).clip(0.0, 1.0)
+
+        # SVD components
+        actual_comp = min(
+            self.n_svd_components, tfidf_mat.shape[1] - 1, tfidf_mat.shape[0] - 1
+        )
+        if not self.is_fitted and actual_comp >= 2:
+            self.svd = TruncatedSVD(n_components=actual_comp, random_state=42)
+            svd_vecs = self.svd.fit_transform(tfidf_mat)
+        elif self.is_fitted:
+            svd_vecs = self.svd.transform(tfidf_mat)
+        else:
+            svd_vecs = np.zeros((n, self.n_svd_components), dtype=np.float32)
+
+        if svd_vecs.shape[1] < self.n_svd_components:
+            pad = np.zeros(
+                (n, self.n_svd_components - svd_vecs.shape[1]), dtype=np.float32
+            )
+            svd_vecs = np.hstack([svd_vecs, pad])
+
+        data_dict: Dict[str, Any] = {
+            "nlp_char_length": char_lengths,
+            "nlp_lexical_diversity": lexical_ttr,
+            "nlp_exclamation_count": excl_counts,
+            "nlp_seeding_hype_score": hype_scores,
+            "nlp_coin_farm_score": coin_scores,
+            "nlp_ai_formality_score": ai_scores,
+            "nlp_authentic_nuance_score": auth_nuance,
+            "nlp_char_entropy": char_entropy,
+            "nlp_sentiment_rating_mismatch": sent_mismatch,
+            "nlp_sentence_burstiness": sent_burstiness,
+            "nlp_max_cosine_sim": max_cos_sim,
+        }
+        for k in range(self.n_svd_components):
+            data_dict[f"nlp_svd_{k}"] = svd_vecs[:, k].astype(np.float32)
+
+        return pd.DataFrame(data_dict, index=df.index)
+
+    def _extract_temporal_and_behavioral(
+        self, df: pd.DataFrame
+    ) -> Tuple[pd.DataFrame, List[Dict[str, Any]]]:
+        n = len(df)
+        timestamps = pd.to_datetime(df["timestamp"], errors="coerce").fillna(
+            pd.Timestamp("2026-10-01")
+        )
+        ts_sec = (timestamps.astype("int64") // 10**9).to_numpy()
+        ratings = df["rating"].astype(float).to_numpy()
+        prod_ids = (
+            df["product_id"].astype(str).to_numpy()
+            if "product_id" in df.columns
+            else np.full(n, "default")
+        )
+        # Scope 15-min burst detection by item_id when available so multi-product shop traffic
+        # is not conflated with single-product order buffing
+        if "item_id" in df.columns:
+            item_ids = df["item_id"].fillna("").astype(str).to_numpy()
+            group_keys = np.array(
+                [
+                    f"{prod_ids[k]}__{item_ids[k]}" if item_ids[k] and item_ids[k] != "0" else prod_ids[k]
+                    for k in range(n)
+                ]
+            )
+        else:
+            group_keys = prod_ids
+
+        reviews_in_15m = np.zeros(n, dtype=np.float32)
+        inter_arrival_log = np.zeros(n, dtype=np.float32)
+        burst_zscore = np.zeros(n, dtype=np.float32)
+        rating_dev = np.zeros(n, dtype=np.float32)
+
+        for gid in np.unique(group_keys):
+            idx = np.where(group_keys == gid)[0]
+            p_ts = ts_sec[idx]
+            p_rat = ratings[idx]
+            med_rat = float(np.median(p_rat)) if len(p_rat) > 0 else 4.5
+
+            diff_mat = np.abs(p_ts[:, None] - p_ts[None, :])
+            in_15m = np.sum(diff_mat <= 900, axis=1) - 1
+            reviews_in_15m[idx] = np.clip(in_15m, 0, None)
+
+            np.fill_diagonal(diff_mat, 1e9)
+            nearest_sec = (
+                np.min(diff_mat, axis=1)
+                if len(idx) > 1
+                else np.full(len(idx), 3600.0)
+            )
+            inter_arrival_log[idx] = np.log1p(
+                np.clip(nearest_sec, 0.0, 86400.0 * 7)
+            )
+
+            hour_buckets = p_ts // 3600
+            unique_hours, counts = np.unique(hour_buckets, return_counts=True)
+            hr_map = dict(zip(unique_hours, counts))
+            mean_c = float(np.mean(counts)) if len(counts) > 0 else 1.0
+            std_c = float(np.std(counts)) + 0.8
+            for local_i, global_i in enumerate(idx):
+                c_val = float(hr_map.get(hour_buckets[local_i], 1))
+                burst_zscore[global_i] = (c_val - mean_c) / std_c
+                rating_dev[global_i] = abs(p_rat[local_i] - med_rat)
+
+        acc_age = (
+            df["account_age_days"].astype(float).clip(1.0, None).to_numpy()
+            if "account_age_days" in df.columns
+            else np.full(n, 180.0)
+        )
+        u_total = (
+            df["user_total_reviews"].astype(float).clip(1.0, None).to_numpy()
+            if "user_total_reviews" in df.columns
+            else np.full(n, 8.0)
+        )
+        velocity = u_total / np.maximum(1.0, acc_age / 30.0)
+        verified = (
+            df["verified_purchase"].astype(float).to_numpy()
+            if "verified_purchase" in df.columns
+            else np.ones(n, dtype=np.float32)
+        )
+        helpful = (
+            df["helpful_votes"].astype(float).to_numpy()
+            if "helpful_votes" in df.columns
+            else np.zeros(n, dtype=np.float32)
+        )
+
+        temp_beh_df = pd.DataFrame(
+            {

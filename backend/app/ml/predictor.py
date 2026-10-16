@@ -335,3 +335,156 @@ class TrustLensPredictor:
             if not isinstance(media_imgs, list):
                 media_imgs = []
             media_vids = row.get("media_videos")
+            if not isinstance(media_vids, list):
+                media_vids = []
+
+            tpl_tags = row.get("template_tags")
+            if not isinstance(tpl_tags, list):
+                tpl_tags = []
+            low_reasons = row.get("low_rating_reasons")
+            if not isinstance(low_reasons, list):
+                low_reasons = []
+
+            comment_str = str(row["comment"])
+            is_text_rev = bool(
+                row.get("is_text_review", not comment_str.startswith("[Đánh giá "))
+            )
+            r_star_val = int(row["rating"])
+            is_repeat_val = bool(row.get("is_repeated_purchase", False))
+            variation_val = str(row.get("variation", "")).strip()
+            helpful_val = int(row.get("helpful_votes", 0) or 0)
+            user_freq_val = int(row.get("user_total_reviews", 1) or 1)
+            cos_sim_pct = round(float(f_row.get("nlp_max_cosine_sim", 0.0)) * 100, 1)
+            burst_cnt = int(f_row.get("temp_reviews_in_15m", 0))
+            coin_score = float(f_row.get("nlp_coin_farm_score", 0.0))
+            nuance_score = float(f_row.get("nlp_authentic_nuance_score", 0.0))
+            word_cnt = int(f_row.get("nlp_word_count", 0))
+            det_rating = row.get("detailed_rating") if isinstance(row.get("detailed_rating"), dict) else None
+
+            # Build 100% real-data concrete Authenticity Signals vs Seeding Signals
+            authenticity_signals: List[str] = []
+            seeding_signals: List[str] = []
+
+            real_vid_secs = [
+                round(int(v.get("duration_ms") or 0) / 1000)
+                for v in media_vids
+                if isinstance(v, dict)
+                and int(v.get("duration_ms") or 0) >= 4000
+                and not bool(v.get("template_video"))
+            ]
+            short_or_tpl_vids = [
+                v
+                for v in media_vids
+                if isinstance(v, dict)
+                and (
+                    bool(v.get("template_video"))
+                    or (0 < int(v.get("duration_ms") or 0) <= 2600)
+                )
+            ]
+
+            if is_seed or prob >= 0.45:
+                if coin_score >= 1.0:
+                    seeding_signals.append("Bình luận nhận xu Shopee")
+                if cos_sim_pct >= 50.0 and is_text_rev:
+                    seeding_signals.append("Nội dung trùng lặp tương tự")
+                if short_or_tpl_vids:
+                    seeding_signals.append("Video ngắn / video mẫu")
+                if burst_cnt >= 4 and r_star_val == 5:
+                    seeding_signals.append(f"Đăng dồn {burst_cnt} đơn/15p")
+                if user_freq_val >= 2 and r_star_val == 5:
+                    seeding_signals.append(f"Tài khoản lặp {user_freq_val} lần tại shop")
+                if det_rating and r_star_val == 5 and int(det_rating.get("product_quality") or 5) <= 3:
+                    seeding_signals.append(
+                        f"Lệch điểm (5★ nhưng Chất lượng {det_rating.get('product_quality')}★)"
+                    )
+                if not seeding_signals:
+                    seeding_signals.append("Nhận xét khen chung chung")
+            else:
+                if is_repeat_val:
+                    authenticity_signals.append("Khách mua lại lần 2+")
+                if len(media_imgs) > 0 and len(real_vid_secs) > 0:
+                    authenticity_signals.append(
+                        f"Có {len(media_imgs)} ảnh & video ({real_vid_secs[0]}s)"
+                    )
+                elif len(real_vid_secs) > 0:
+                    authenticity_signals.append(f"Có video quay sản phẩm ({real_vid_secs[0]}s)")
+                elif len(media_imgs) > 0:
+                    authenticity_signals.append(f"Đính kèm {len(media_imgs)} hình ảnh")
+                if r_star_val <= 4 and (low_reasons or is_text_rev):
+                    authenticity_signals.append("Phản hồi khách quan từ người mua")
+                elif nuance_score >= 1.0 or (is_text_rev and word_cnt >= 16 and cos_sim_pct < 38):
+                    authenticity_signals.append("Mô tả trải nghiệm chi tiết")
+                if helpful_val > 0:
+                    authenticity_signals.append(f"{helpful_val} người thấy hữu ích")
+                if variation_val and len(authenticity_signals) < 2:
+                    authenticity_signals.append("Có thông tin phân loại hàng")
+
+            enriched_reviews.append({
+                "review_id": rev_id,
+                "order_id": str(row.get("order_id", "")),
+                "item_id": str(row.get("item_id", "")),
+                "product_name": str(row.get("product_name", product_data.get("name", ""))),
+                "variation": variation_val,
+                "is_target_item": bool(row.get("is_target_item", True)),
+                "is_text_review": is_text_rev,
+                "is_repeated_purchase": is_repeat_val,
+                "anonymous": bool(row.get("anonymous", False)),
+                "edit_delay_sec": int(row.get("edit_delay_sec", 0) or 0),
+                "template_tags": tpl_tags,
+                "low_rating_reasons": low_reasons,
+                "authenticity_signals": authenticity_signals,
+                "seeding_signals": seeding_signals,
+                "user_id": str(row["user_id"]),
+                "user_name": str(row["user_name"]),
+                "user_avatar": str(row.get("user_avatar", "")),
+                "rating": r_star_val,
+                "comment": comment_str,
+                "timestamp": str(row["timestamp"]),
+                "has_media": int(row.get("has_media", 0)),
+                "media_images": media_imgs,
+                "media_videos": media_vids,
+                "seller_reply": str(row.get("seller_reply", "")),
+                "detailed_rating": det_rating,
+                "verified_purchase": int(row.get("verified_purchase", 1)),
+                "helpful_votes": helpful_val,
+                "account_age_days": int(row.get("account_age_days", 365)),
+                "user_total_reviews": user_freq_val,
+                "seeding_probability": round(prob * 100, 1),
+                "is_seeding": bool(is_seed),
+                "seeding_type": arch_code,
+                "seeding_type_label": arch_label,
+                "cosine_similarity_max": cos_sim_pct,
+                "burst_15m_count": burst_cnt,
+                "graph_degree": round(float(f_row.get("graph_degree_centrality", 0.0)) * 100, 1),
+                "shap_reasons": reasons,
+                "model_votes": per_review_model_votes[i],
+                "models_flagged_count": per_review_flagged_count[i],
+            })
+
+        graph_payload = aux["graph"]
+        for node in graph_payload.get("nodes", []):
+            nid = node["id"]
+            p_val = prob_by_rev_id.get(nid, 0.2)
+            node["seeding_probability"] = round(p_val * 100, 1)
+            node["is_seeding"] = bool(p_val >= 0.50)
+            node["seeding_type"] = type_by_rev_id.get(nid, "AUTHENTIC")
+
+        all_ratings = [r["rating"] for r in enriched_reviews]
+        auth_reviews = [r for r in enriched_reviews if not r["is_seeding"]]
+        auth_ratings = [r["rating"] for r in auth_reviews]
+
+        seeding_count = sum(1 for r in enriched_reviews if r["is_seeding"])
+        total_count = len(enriched_reviews)
+        seeding_rate_pct = round((seeding_count / max(1, total_count)) * 100, 1)
+
+        # Build live 5-model comparison on this product
+        live_model_comparison: List[Dict[str, Any]] = []
+        for m_key, m_entry in self.all_5_models.items():
+            p_vec = model_raw_probs[m_key]
+            m_flagged = int(np.sum(p_vec >= 0.50))
+            m_rate = round((m_flagged / max(1, total_count)) * 100.0, 1)
+            m_mean_prob = round(float(np.mean(p_vec)) * 100.0, 1)
+            live_model_comparison.append({
+                "id": m_entry["id"],
+                "short_name": m_entry["short_name"],
+                "name": m_entry["name"],

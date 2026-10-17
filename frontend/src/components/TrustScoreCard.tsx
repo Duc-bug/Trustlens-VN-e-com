@@ -486,3 +486,403 @@ export default function TrustScoreCard({
                         <img
                           src={sp.image_url}
                           alt={sp.name}
+                          width={32}
+                          height={32}
+                          className="h-8 w-8 shrink-0 rounded-lg border border-gray-100 object-cover"
+                        />
+                      )}
+                      <div className="max-w-[165px] min-w-0">
+                        <div className="truncate text-[11px] font-bold">
+                          {sp.name}
+                        </div>
+                        <div className="text-[10px] font-semibold text-gray-500">
+                          {sp.review_count} đánh giá
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* SECTION 2: 2-COLUMN SPACIOUS VERDICT & STAR DISTRIBUTION */}
+        <div className="grid grid-cols-1 divide-y divide-gray-100 lg:grid-cols-12 lg:divide-x lg:divide-y-0">
+          {/* LEFT (7 cols): VERDICT + 80x80 GAUGE + PLATFORM VS REAL RATING */}
+          <div
+            className={`flex flex-col justify-between bg-gradient-to-br p-5 sm:p-6 lg:col-span-7 ${verdict.bg}`}
+          >
+            <div>
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div className="flex items-center gap-3.5">
+                  <div
+                    className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl text-white shadow-xs ${verdict.badgeBg}`}
+                  >
+                    <VerdictIcon className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span
+                        className={`whitespace-nowrap rounded-lg px-3 py-0.5 text-sm font-black tracking-tight text-white ${verdict.badgeBg}`}
+                      >
+                        {verdict.label}
+                      </span>
+                      <span className="text-sm font-extrabold text-gray-800">
+                        {metrics.risk_label}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs font-semibold text-gray-600">
+                      {verdict.subLabel}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Fixed 80x80px Circular Trust Score Gauge */}
+                <div className="flex items-center gap-3 rounded-2xl border border-gray-200/60 bg-white px-3.5 py-2 shadow-2xs">
+                  <div className="relative h-16 w-16 shrink-0">
+                    <svg
+                      width={64}
+                      height={64}
+                      className="h-16 w-16 -rotate-90"
+                      viewBox="0 0 88 88"
+                    >
+                      <circle
+                        cx="44"
+                        cy="44"
+                        r={radius}
+                        fill="transparent"
+                        stroke="#E5E7EB"
+                        strokeWidth="8"
+                      />
+                      <circle
+                        cx="44"
+                        cy="44"
+                        r={radius}
+                        fill="transparent"
+                        stroke={verdict.strokeColor}
+                        strokeWidth="8"
+                        strokeLinecap="round"
+                        strokeDasharray={circumference}
+                        strokeDashoffset={strokeDashoffset}
+                      />
+                    </svg>
+                    <div className="absolute inset-0 flex flex-col items-center justify-center">
+                      <span
+                        className={`text-lg font-black leading-none ${verdict.textColor}`}
+                      >
+                        {Math.round(score)}
+                      </span>
+                      <span className="text-[9px] font-bold text-gray-400">
+                        /100
+                      </span>
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-[11px] font-bold text-gray-500">
+                      Điểm tin cậy
+                    </div>
+                    <div className={`text-xs font-black ${verdict.textColor}`}>
+                      {verdict.label}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <p className="mt-3.5 text-sm font-bold leading-relaxed text-gray-800">
+                {shortReasonSentence}
+              </p>
+            </div>
+
+            {/* Side-by-Side Platform Rating vs Adjusted True Rating */}
+            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="rounded-2xl border border-gray-200/80 bg-white p-4 shadow-2xs">
+                <div className="text-xs font-bold text-gray-500">
+                  Điểm hiển thị trên sàn
+                </div>
+                <div className="mt-1 flex items-baseline gap-1.5">
+                  <span className="text-3xl font-black text-gray-900">
+                    {metrics.platform_rating.toFixed(2)}
+                  </span>
+                  <Star className="h-5 w-5 fill-[#F59E0B] text-[#F59E0B]" />
+                </div>
+                <div className="mt-1 text-xs font-medium text-gray-500">
+                  Trung bình hiển thị gốc trên Shopee
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-emerald-300 bg-white p-4 shadow-2xs">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-extrabold text-[#0D5CB6]">
+                    Điểm thực tế sau lọc
+                  </span>
+                  {metrics.rating_inflation > 0.03 && (
+                    <span className="whitespace-nowrap rounded-md bg-red-50 px-2 py-0.5 text-xs font-extrabold text-[#DC2626]">
+                      -{metrics.rating_inflation.toFixed(2)}★
+                    </span>
+                  )}
+                </div>
+                <div className="mt-1 flex items-baseline gap-1.5">
+                  <span className="text-3xl font-black text-[#16A34A]">
+                    {metrics.adjusted_rating.toFixed(2)}
+                  </span>
+                  <Star className="h-5 w-5 fill-[#16A34A] text-[#16A34A]" />
+                </div>
+                <div className="mt-1 text-xs font-semibold text-emerald-700">
+                  Tính từ {metrics.authentic_reviews_count} đánh giá hợp lệ
+                </div>
+              </div>
+            </div>
+
+            {/* Authentic vs Suspicious Split Progress Bar */}
+            <div className="mt-4 rounded-xl border border-gray-200/60 bg-white p-3">
+              <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2 text-xs font-extrabold">
+                <span className="text-[#16A34A]">
+                  ✓ Đánh giá hợp lệ: {metrics.authentic_reviews_count} ({authenticPct}%)
+                </span>
+                <span className="text-[#DC2626]">
+                  ⚠ Đánh giá nghi vấn: {metrics.seeding_reviews_count} ({Math.round(metrics.seeding_rate_pct)}%)
+                </span>
+              </div>
+              <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-red-100">
+                <div
+                  className="h-full bg-[#16A34A] transition-all"
+                  style={{ width: `${authenticPct}%` }}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* RIGHT (5 cols): PARALLEL STAR DISTRIBUTION (5★ -> 1★) */}
+          <div className="flex flex-col justify-between p-5 sm:p-6 lg:col-span-5">
+            <div>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h3 className="text-sm font-extrabold text-gray-900">
+                    Phân bố sao trước &amp; sau lọc
+                  </h3>
+                  <p className="text-xs font-medium text-gray-500">
+                    Đối chiếu số lượng đánh giá theo từng mức sao
+                  </p>
+                </div>
+                <div className="flex items-center gap-3 text-xs font-bold">
+                  <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-gray-500">
+                    <span className="h-2.5 w-2.5 rounded-full bg-gray-300" />
+                    Hiển thị
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-[#16A34A]">
+                    <span className="h-2.5 w-2.5 rounded-full bg-[#16A34A]" />
+                    Thực tế
+                  </span>
+                </div>
+              </div>
+
+              <div className="mt-4 space-y-3">
+                {starComparison.map((row) => {
+                  const shownPct = Math.round(
+                    (row.shownCount / maxStarCount) * 100
+                  );
+                  const realPct = Math.round(
+                    (row.realCount / maxStarCount) * 100
+                  );
+                  const fakeCount = Math.max(0, row.shownCount - row.realCount);
+
+                  return (
+                    <div key={row.star} className="flex items-center gap-3">
+                      <div className="w-9 shrink-0 whitespace-nowrap text-xs font-extrabold text-gray-800">
+                        {row.star} ★
+                      </div>
+                      <div className="flex-1 space-y-1">
+                        <div className="flex items-center gap-2">
+                          <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-gray-100">
+                            <div
+                              className="h-full rounded-full bg-gray-300"
+                              style={{ width: `${shownPct}%` }}
+                            />
+                          </div>
+                          <span className="w-8 text-right text-xs font-bold text-gray-500">
+                            {row.shownCount}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-gray-100">
+                            <div
+                              className="h-full rounded-full bg-[#16A34A]"
+                              style={{ width: `${realPct}%` }}
+                            />
+                          </div>
+                          <span className="w-8 text-right text-xs font-extrabold text-[#16A34A]">
+                            {row.realCount}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="w-24 shrink-0 text-right">
+                        {fakeCount > 0 ? (
+                          <span className="inline-block whitespace-nowrap rounded-md bg-red-50 px-2 py-0.5 text-[11px] font-bold text-[#DC2626]">
+                            -{fakeCount} nghi vấn
+                          </span>
+                        ) : (
+                          <span className="inline-block whitespace-nowrap text-[11px] font-semibold text-emerald-700">
+                            Hợp lệ
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {meta?.variations && meta.variations.length > 0 && (
+              <div className="mt-4 border-t border-gray-100 pt-3">
+                <div className="mb-1.5 text-xs font-bold text-gray-500">
+                  Phân loại hàng phổ biến ({meta.variations.length}):
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {meta.variations.slice(0, 6).map((v, idx) => (
+                    <span
+                      key={idx}
+                      className="rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-0.5 text-xs font-semibold text-gray-700"
+                    >
+                      {v}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* SECTION 3: BOTTOM HORIZONTAL STRIP FOR 4 SIGNALS + 5-MODEL CONSENSUS */}
+        <div className="border-t border-gray-100 bg-gray-50/60 p-5 sm:p-6">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <div className="flex items-center justify-between rounded-xl border border-gray-200/80 bg-white p-3.5 shadow-2xs">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-red-50 text-[#DC2626]">
+                  <Clock className="h-5 w-5" />
+                </div>
+                <div>
+                  <div className="text-xs font-extrabold text-gray-900">
+                    Đơn dồn theo giờ
+                  </div>
+                  <div className="text-[11px] font-medium text-gray-500">
+                    Cao nhất 1 khung giờ
+                  </div>
+                </div>
+              </div>
+              <span className="whitespace-nowrap text-base font-black text-gray-900">
+                {maxHourlyOrders} đơn
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between rounded-xl border border-gray-200/80 bg-white p-3.5 shadow-2xs">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-[#D97706]">
+                  <Copy className="h-5 w-5" />
+                </div>
+                <div>
+                  <div className="text-xs font-extrabold text-gray-900">
+                    Trùng lặp văn mẫu
+                  </div>
+                  <div className="text-[11px] font-medium text-gray-500">
+                    Nội dung tương tự
+                  </div>
+                </div>
+              </div>
+              <span className="whitespace-nowrap text-base font-black text-[#D97706]">
+                {duplicateCount}
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between rounded-xl border border-gray-200/80 bg-white p-3.5 shadow-2xs">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-orange-50 text-[#EA580C]">
+                  <Coins className="h-5 w-5" />
+                </div>
+                <div>
+                  <div className="text-xs font-extrabold text-gray-900">
+                    Bình luận nhận xu
+                  </div>
+                  <div className="text-[11px] font-medium text-gray-500">
+                    Viết chung chung lấy xu
+                  </div>
+                </div>
+              </div>
+              <span className="whitespace-nowrap text-base font-black text-[#EA580C]">
+                {coinCount}
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between rounded-xl border border-gray-200/80 bg-white p-3.5 shadow-2xs">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-[#1A73E8]">
+                  <Users className="h-5 w-5" />
+                </div>
+                <div>
+                  <div className="text-xs font-extrabold text-gray-900">
+                    Cụm liên kết đồ thị
+                  </div>
+                  <div className="text-[11px] font-medium text-gray-500">
+                    Đánh giá trùng thời điểm
+                  </div>
+                </div>
+              </div>
+              <span className="whitespace-nowrap text-base font-black text-[#1A73E8]">
+                {clusterAccountsCount} TK
+              </span>
+            </div>
+          </div>
+
+          {/* Spacious 5-Column Bar for the 5 Models */}
+          {liveModels.length > 0 && (
+            <div className="mt-4 rounded-2xl border border-blue-200/80 bg-white p-4 shadow-2xs">
+              <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="inline-flex items-center gap-1.5 rounded-lg bg-blue-50 px-2.5 py-1 text-xs font-extrabold text-[#0D5CB6]">
+                    <Cpu className="h-3.5 w-3.5" />
+                    Kết quả 5 mô hình học máy chạy song song trên sản phẩm này
+                  </span>
+                </div>
+                {onOpenTechnicalTab && (
+                  <button
+                    type="button"
+                    onClick={onOpenTechnicalTab}
+                    className="inline-flex items-center gap-1 text-xs font-extrabold text-[#1A73E8] hover:underline"
+                  >
+                    <span>Xem bảng thông số chi tiết</span>
+                    <ArrowRight className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-5">
+                {liveModels.map((m) => (
+                  <div
+                    key={m.id}
+                    className={`rounded-xl border px-3 py-2 ${
+                      m.is_proposed
+                        ? "border-blue-300 bg-blue-50/50"
+                        : "border-gray-200/80 bg-gray-50/70"
+                    }`}
+                  >
+                    <div className="truncate text-xs font-extrabold text-gray-900">
+                      {m.short_name}
+                    </div>
+                    <div className="mt-1 flex items-center justify-between gap-1 text-xs">
+                      <span className="whitespace-nowrap font-bold text-[#DC2626]">
+                        {m.flagged_count} nghi vấn
+                      </span>
+                      <span className="whitespace-nowrap font-semibold text-gray-500">
+                        ({m.flagged_rate_pct}%)
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

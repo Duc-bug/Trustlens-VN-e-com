@@ -159,3 +159,135 @@ export interface ReviewItem {
   is_text_review?: boolean;
   is_repeated_purchase?: boolean;
   anonymous?: boolean;
+  edit_delay_sec?: number;
+  template_tags?: string[];
+  low_rating_reasons?: string[];
+  authenticity_signals?: string[];
+  seeding_signals?: string[];
+  user_id: string;
+  user_name: string;
+  user_avatar?: string;
+  rating: number;
+  comment: string;
+  timestamp: string;
+  has_media: number;
+  media_images?: string[];
+  media_videos?: ReviewVideoItem[];
+  seller_reply?: string;
+  detailed_rating?: {
+    product_quality: number;
+    seller_service: number;
+    delivery_service: number;
+  } | null;
+  verified_purchase: number;
+  helpful_votes: number;
+  account_age_days: number;
+  user_total_reviews: number;
+  seeding_probability: number;
+  is_seeding: boolean;
+  seeding_type: string;
+  seeding_type_label: string;
+  cosine_similarity_max: number;
+  burst_15m_count: number;
+  graph_degree: number;
+  shap_reasons: LocalShapReason[];
+  model_votes?: Record<string, number>;
+  models_flagged_count?: number;
+}
+
+export interface LiveModelComparisonItem {
+  id: string;
+  short_name: string;
+  name: string;
+  feature_set: string;
+  flagged_count: number;
+  flagged_rate_pct: number;
+  mean_prob_pct: number;
+  latency_ms: number;
+  cv_f1: number;
+  roc_auc: number;
+  is_proposed: boolean;
+}
+
+export interface AnalysisResponse {
+  product_info: ProductInfo;
+  trust_metrics: TrustMetrics;
+  burst_timeline: BurstTimelinePoint[];
+  seeding_graph: SeedingGraphPayload;
+  shap_explanations: ShapFeatureItem[];
+  live_model_comparison?: LiveModelComparisonItem[];
+  reviews: ReviewItem[];
+}
+
+export interface CurvePoint {
+  x: number;
+  y: number;
+}
+
+export interface CrossValSummary {
+  f1_mean: number;
+  f1_std: number;
+  roc_auc_mean: number;
+  roc_auc_std: number;
+  fold_f1_scores: number[];
+}
+
+export interface PairedTTestSummary {
+  t_stat: number;
+  p_value: number;
+  p_value_str: string;
+  significant: boolean;
+}
+
+export interface BenchmarkModelMetric {
+  id: string;
+  name: string;
+  short_name: string;
+  feature_set: string;
+  is_proposed: boolean;
+  latency_ms: number;
+  accuracy: number;
+  precision: number;
+  recall: number;
+  f1_score: number;
+  roc_auc: number;
+  pr_auc: number;
+  mcc?: number;
+  brier_score?: number;
+  optimal_threshold?: number;
+  cv_5fold?: CrossValSummary;
+  paired_ttest?: PairedTTestSummary;
+  roc_curve?: CurvePoint[];
+  pr_curve?: CurvePoint[];
+  confusion_matrix: {
+    tn: number;
+    fp: number;
+    fn: number;
+    tp: number;
+  };
+}
+
+export interface AblationItem {
+  configuration: string;
+  f1_score: number;
+  roc_auc: number;
+  gain_f1: number;
+}
+
+export interface BenchmarkResponse {
+  dataset_summary: {
+    total_reviews: number;
+    train_samples: number;
+    test_samples: number;
+    seeding_ratio_pct: number;
+    total_features: number;
+    nlp_features_count: number;
+    temporal_behavioral_count: number;
+    graph_gat_features_count: number;
+    cv_folds?: number;
+    platforms_covered: string[];
+  };
+  models: BenchmarkModelMetric[];
+  ablation_study: AblationItem[];
+  global_shap_importance: ShapFeatureItem[];
+}

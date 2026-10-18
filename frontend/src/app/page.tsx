@@ -737,3 +737,188 @@ export default function HomePage() {
                   analysis.live_model_comparison.length > 0 && (
                     <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-xs">
                       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <h3 className="text-base font-extrabold text-gray-900">
+                            Kết quả chạy thực tế 5 mô hình trên sản phẩm này
+                          </h3>
+                          <p className="text-xs font-medium text-gray-500">
+                            Đối chiếu trực tiếp số lượng đánh giá nghi vấn được phát hiện bởi từng kiến trúc mô hình trên tập{" "}
+                            {analysis.trust_metrics.total_reviews_analyzed} đánh giá hiện tại
+                          </p>
+                        </div>
+                        <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-extrabold text-emerald-700">
+                          Đang chạy đồng thời 5/5 mô hình
+                        </span>
+                      </div>
+
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-xs">
+                          <thead>
+                            <tr className="border-b border-gray-200 bg-gray-50 text-[11px] font-extrabold uppercase text-gray-600">
+                              <th className="px-3 py-2.5">Mô hình học máy</th>
+                              <th className="px-3 py-2.5">Tập đặc trưng sử dụng</th>
+                              <th className="px-3 py-2.5 text-center">
+                                Số review nghi vấn
+                              </th>
+                              <th className="px-3 py-2.5 text-center">
+                                Tỷ lệ phát hiện
+                              </th>
+                              <th className="px-3 py-2.5 text-center">
+                                Xác suất nghi vấn TB
+                              </th>
+                              <th className="px-3 py-2.5 text-center">
+                                F1 (5-Fold CV)
+                              </th>
+                              <th className="px-3 py-2.5 text-right">
+                                Thời gian chạy
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-100">
+                            {analysis.live_model_comparison.map((m) => (
+                              <tr
+                                key={m.id}
+                                className={
+                                  m.is_proposed
+                                    ? "bg-blue-50/50 font-bold text-gray-900"
+                                    : "text-gray-700 hover:bg-gray-50/60"
+                                }
+                              >
+                                <td className="px-3 py-2.5">
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-extrabold text-gray-900">
+                                      {m.name}
+                                    </span>
+                                    {m.is_proposed && (
+                                      <span className="rounded bg-[#0D5CB6] px-1.5 py-0.5 text-[10px] font-bold text-white">
+                                        Đề xuất
+                                      </span>
+                                    )}
+                                  </div>
+                                </td>
+                                <td className="px-3 py-2.5 text-gray-600">
+                                  {m.feature_set}
+                                </td>
+                                <td className="px-3 py-2.5 text-center font-extrabold text-[#DC2626]">
+                                  {m.flagged_count} /{" "}
+                                  {analysis.trust_metrics.total_reviews_analyzed}
+                                </td>
+                                <td className="px-3 py-2.5 text-center font-bold">
+                                  {m.flagged_rate_pct}%
+                                </td>
+                                <td className="px-3 py-2.5 text-center font-semibold text-gray-700">
+                                  {m.mean_prob_pct}%
+                                </td>
+                                <td className="px-3 py-2.5 text-center font-bold text-emerald-700">
+                                  {m.cv_f1}%
+                                </td>
+                                <td className="px-3 py-2.5 text-right font-mono text-[11px] text-gray-500">
+                                  {m.latency_ms} ms
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+
+                <div className="grid grid-cols-1 gap-5 lg:grid-cols-12">
+                  <div className="lg:col-span-6">
+                    <SeedingGraph graph={analysis.seeding_graph} />
+                  </div>
+                  <div className="lg:col-span-6">
+                    <ShapChart
+                      data={analysis.shap_explanations}
+                      showTechnicalSubtext={true}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </main>
+
+      {/* STICKY MOBILE BOTTOM BAR */}
+      {analysis && (
+        <div className="fixed right-0 bottom-0 left-0 z-30 flex items-center justify-between border-t border-gray-200 bg-white/95 px-4 py-2.5 shadow-lg backdrop-blur-xs md:hidden">
+          <div className="text-xs font-bold text-gray-700">
+            Điểm thực tế:{" "}
+            <span className="text-sm font-black text-[#16A34A]">
+              {analysis.trust_metrics.adjusted_rating.toFixed(2)}★
+            </span>{" "}
+            ({Math.round(analysis.trust_metrics.trust_score)}/100)
+          </div>
+          <button
+            type="button"
+            onClick={scrollToSearchBox}
+            className="inline-flex items-center gap-1.5 rounded-xl bg-[#FF6B35] px-4 py-2 text-xs font-extrabold text-white shadow-xs"
+          >
+            <ArrowUp className="h-3.5 w-3.5" />
+            <span>Kiểm tra sản phẩm khác</span>
+          </button>
+        </div>
+      )}
+
+      {/* Benchmark Modal */}
+      <BenchmarkModal
+        isOpen={benchmarkOpen}
+        onClose={() => setBenchmarkOpen(false)}
+        benchmark={benchmark}
+      />
+
+      {/* Browser F12 Extractor Modal */}
+      {extractorOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs">
+          <div className="max-w-2xl w-full rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-gray-200 pb-3">
+              <div className="flex items-center gap-2">
+                <Code2 className="h-5 w-5 text-[#1A73E8]" />
+                <h2 className="text-base font-extrabold text-gray-900">
+                  Mã trích xuất bình luận trên trình duyệt (F12 Console)
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setExtractorOpen(false)}
+                className="flex h-8 w-8 items-center justify-center rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="mt-4">
+              <pre className="max-h-56 overflow-x-auto rounded-xl bg-gray-900 p-4 text-xs leading-relaxed text-emerald-300">
+                <code>{BROWSER_CONSOLE_SNIPPET}</code>
+              </pre>
+              <div className="mt-3 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(BROWSER_CONSOLE_SNIPPET);
+                    setCopiedSnippet(true);
+                    setTimeout(() => setCopiedSnippet(false), 2000);
+                  }}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-[#0D5CB6] px-4 py-2 text-xs font-extrabold text-white hover:bg-blue-800"
+                >
+                  {copiedSnippet ? (
+                    <>
+                      <Check className="h-4 w-4" />
+                      <span>Đã sao chép mã</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="h-4 w-4" />
+                      <span>Sao chép đoạn mã</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

@@ -413,3 +413,327 @@ export default function HomePage() {
               }`}
             >
               {statusBanner}
+            </div>
+          )}
+        </section>
+
+        {/* Loading Skeleton */}
+        {loading && !analysis && (
+          <div className="rounded-3xl border border-gray-200 bg-white p-8 text-center shadow-xs">
+            <Loader2 className="mx-auto h-8 w-8 animate-spin text-[#FF6B35]" />
+            <h2 className="mt-3 text-base font-extrabold text-gray-900">
+              Đang tải và phân tích đánh giá từ Shopee...
+            </h2>
+            <p className="mt-1 text-xs font-medium text-gray-500">
+              Hệ thống đang tổng hợp thông tin gian hàng, phân loại sản phẩm,
+              hình ảnh/video và chạy đồng thời 5 mô hình học máy.
+            </p>
+          </div>
+        )}
+
+        {/* 3. THREE VIEW TABS: Tổng quan | Danh sách review | Chi tiết kỹ thuật */}
+        {analysis && (
+          <div className="space-y-5">
+            {/* Segmented Tab Navigation Bar */}
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-gray-200/80 bg-white p-1.5 shadow-2xs">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("overview")}
+                  className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-extrabold transition ${
+                    activeTab === "overview"
+                      ? "bg-[#0D5CB6] text-white shadow-xs"
+                      : "text-gray-700 hover:bg-gray-100"
+                  }`}
+                >
+                  <LayoutDashboard className="h-4 w-4" />
+                  <span>Tổng quan</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("reviews")}
+                  className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-extrabold transition ${
+                    activeTab === "reviews"
+                      ? "bg-[#0D5CB6] text-white shadow-xs"
+                      : "text-gray-700 hover:bg-gray-100"
+                  }`}
+                >
+                  <MessageSquareText className="h-4 w-4" />
+                  <span>Danh sách đánh giá</span>
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-xs font-extrabold ${
+                      activeTab === "reviews"
+                        ? "bg-white/20 text-white"
+                        : "bg-gray-100 text-gray-700"
+                    }`}
+                  >
+                    {analysis.trust_metrics.total_reviews_analyzed}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("technical")}
+                  className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-extrabold transition ${
+                    activeTab === "technical"
+                      ? "bg-[#0D5CB6] text-white shadow-xs"
+                      : "text-gray-700 hover:bg-gray-100"
+                  }`}
+                >
+                  <Microscope className="h-4 w-4" />
+                  <span>Chi tiết kỹ thuật</span>
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-[11px] font-extrabold ${
+                      activeTab === "technical"
+                        ? "bg-white/20 text-white"
+                        : "bg-blue-50 text-[#0D5CB6]"
+                    }`}
+                  >
+                    5 Mô hình
+                  </span>
+                </button>
+              </div>
+            </div>
+
+            {/* TAB 1: TỔNG QUAN */}
+            {activeTab === "overview" && (
+              <div className="space-y-5">
+                <TrustScoreCard
+                  product={analysis.product_info}
+                  metrics={analysis.trust_metrics}
+                  reviews={analysis.reviews}
+                  burstTimeline={analysis.burst_timeline}
+                  graphData={analysis.seeding_graph}
+                  liveModels={analysis.live_model_comparison}
+                  isSaved={savedWatchlist.includes(
+                    analysis.product_info.product_id
+                  )}
+                  onToggleSave={handleToggleWatchlist}
+                  onOpenTechnicalTab={() => setActiveTab("technical")}
+                  onSelectShopProduct={(itemUrl) => {
+                    setUrlInput(itemUrl);
+                    handleAnalyzeUrl(
+                      { preventDefault: () => {} } as React.FormEvent,
+                      itemUrl
+                    );
+                  }}
+                />
+
+                {/* 2 Panels side-by-side */}
+                <div className="grid grid-cols-1 gap-5 lg:grid-cols-12">
+                  <div className="lg:col-span-6">
+                    <RealReviewInsights reviews={analysis.reviews} />
+                  </div>
+                  <div className="lg:col-span-6">
+                    <BurstChart data={analysis.burst_timeline} />
+                  </div>
+                </div>
+
+                {/* Direct Comparison: Verified Real Reviews vs Suspicious Seeding Reviews */}
+                <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-xs">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <h3 className="text-base font-extrabold text-gray-900">
+                        Đối chiếu: Đánh giá từ người mua &amp; Đánh giá nghi vấn
+                      </h3>
+                      <p className="text-xs font-medium text-gray-500">
+                        So sánh các đánh giá chi tiết của người mua và các bình
+                        luận có dấu hiệu bất thường
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab("reviews")}
+                      className="inline-flex items-center gap-1 rounded-xl bg-blue-50 px-3.5 py-2 text-xs font-extrabold text-[#0D5CB6] transition hover:bg-blue-100"
+                    >
+                      <span>
+                        Xem tất cả{" "}
+                        {analysis.trust_metrics.total_reviews_analyzed} đánh giá
+                      </span>
+                      <ChevronRight className="h-4 w-4" />
+                    </button>
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
+                    {/* Left Column: Verified Real Reviews */}
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-1.5 text-xs font-extrabold text-emerald-800">
+                        <CheckCircle2 className="h-4 w-4 text-[#16A34A]" />
+                        <span>
+                          Đánh giá Thật tiêu biểu (
+                          {analysis.trust_metrics.authentic_reviews_count} đánh
+                          giá)
+                        </span>
+                      </div>
+                      {overviewComparisonReviews.topReal.map((rev) => (
+                        <div
+                          key={rev.review_id}
+                          className="flex flex-col justify-between rounded-xl border border-emerald-200 bg-emerald-50/25 p-3.5"
+                        >
+                          <div>
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-extrabold text-gray-900">
+                                  {rev.user_name}
+                                </span>
+                                {rev.is_repeated_purchase && (
+                                  <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-extrabold text-emerald-800">
+                                    ✓ Khách mua lại
+                                  </span>
+                                )}
+                              </div>
+                              <span className="rounded-full bg-[#16A34A] px-2.5 py-0.5 text-[11px] font-bold text-white">
+                                Đánh giá thật
+                              </span>
+                            </div>
+                            <div className="mt-1 flex items-center gap-2 text-[11px] text-gray-500">
+                              <div className="flex items-center gap-0.5">
+                                {Array.from({ length: 5 }).map((_, i) => (
+                                  <Star
+                                    key={i}
+                                    className={`h-3 w-3 ${
+                                      i < rev.rating
+                                        ? "fill-[#F59E0B] text-[#F59E0B]"
+                                        : "text-gray-300"
+                                    }`}
+                                  />
+                                ))}
+                              </div>
+                              {rev.variation && (
+                                <span className="truncate font-semibold text-gray-600">
+                                  • Phân loại: {rev.variation}
+                                </span>
+                              )}
+                            </div>
+                            <p className="mt-2 line-clamp-3 text-xs leading-relaxed text-gray-800">
+                              {rev.comment}
+                            </p>
+                          </div>
+                          {rev.authenticity_signals &&
+                            rev.authenticity_signals.length > 0 && (
+                              <div className="mt-2.5 flex flex-wrap gap-1.5">
+                                {rev.authenticity_signals
+                                  .slice(0, 2)
+                                  .map((sig, sIdx) => (
+                                    <span
+                                      key={sIdx}
+                                      className="rounded-md border border-emerald-200 bg-white px-2 py-0.5 text-[10px] font-bold text-emerald-700"
+                                    >
+                                      ✓ {sig}
+                                    </span>
+                                  ))}
+                              </div>
+                            )}
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Right Column: Suspicious / Seeding Reviews */}
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-1.5 text-xs font-extrabold text-red-800">
+                        <ShieldAlert className="h-4 w-4 text-[#DC2626]" />
+                        <span>
+                          Đánh giá Nghi Seeding / Cày xu tiêu biểu (
+                          {analysis.trust_metrics.seeding_reviews_count} đánh
+                          giá)
+                        </span>
+                      </div>
+                      {overviewComparisonReviews.topSeeding.length > 0 ? (
+                        overviewComparisonReviews.topSeeding.map((rev) => (
+                          <div
+                            key={rev.review_id}
+                            className="flex flex-col justify-between rounded-xl border border-red-200 bg-red-50/25 p-3.5"
+                          >
+                            <div>
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="truncate text-xs font-extrabold text-gray-900">
+                                  {rev.user_name}
+                                </span>
+                                <span className="whitespace-nowrap rounded-full bg-[#DC2626] px-2.5 py-0.5 text-[11px] font-bold text-white">
+                                  Nghi seeding
+                                </span>
+                              </div>
+                              <div className="mt-1 flex items-center gap-2 text-[11px] text-gray-500">
+                                <div className="flex items-center gap-0.5">
+                                  {Array.from({ length: 5 }).map((_, i) => (
+                                    <Star
+                                      key={i}
+                                      className={`h-3 w-3 ${
+                                        i < rev.rating
+                                          ? "fill-[#F59E0B] text-[#F59E0B]"
+                                          : "text-gray-300"
+                                      }`}
+                                    />
+                                  ))}
+                                </div>
+                                {rev.variation && (
+                                  <span className="truncate font-semibold text-gray-600">
+                                    • Phân loại: {rev.variation}
+                                  </span>
+                                )}
+                              </div>
+                              <p className="mt-2 line-clamp-3 text-xs leading-relaxed text-gray-800">
+                                {rev.comment}
+                              </p>
+                            </div>
+                            {rev.seeding_signals &&
+                              rev.seeding_signals.length > 0 && (
+                                <div className="mt-2.5 flex flex-wrap gap-1.5">
+                                  {rev.seeding_signals
+                                    .slice(0, 2)
+                                    .map((sig, sIdx) => (
+                                      <span
+                                        key={sIdx}
+                                        className="rounded-md border border-red-200 bg-white px-2 py-0.5 text-[10px] font-bold text-[#DC2626]"
+                                      >
+                                        ⚠ {sig}
+                                      </span>
+                                    ))}
+                                </div>
+                              )}
+                          </div>
+                        ))
+                      ) : (
+                        <div className="flex h-36 items-center justify-center rounded-xl border border-dashed border-gray-200 p-4 text-center text-xs font-semibold text-gray-500">
+                          Không phát hiện bình luận seeding/cày xu nào trên sản
+                          phẩm này.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* TAB 2: DANH SÁCH REVIEW (Full Review Explorer) */}
+            {activeTab === "reviews" && (
+              <ReviewExplorer reviews={analysis.reviews} />
+            )}
+
+            {/* TAB 3: CHI TIẾT KỸ THUẬT */}
+            {activeTab === "technical" && (
+              <div className="space-y-5">
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-blue-200 bg-blue-50/60 p-4">
+                  <div>
+                    <h3 className="text-sm font-extrabold text-[#0D5CB6]">
+                      Chế độ Nghiên cứu &amp; Học thuật (5 Mô hình chạy song song + Graph ML + SHAP)
+                    </h3>
+                    <p className="text-xs font-medium text-gray-600">
+                      Hệ thống vận hành đồng thời cả 5 mô hình học máy trên từng sản phẩm để biểu quyết đa mô hình và trích xuất đồ thị cấu kết GAT.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setBenchmarkOpen(true)}
+                    className="rounded-xl bg-[#0D5CB6] px-4 py-2 text-xs font-extrabold text-white shadow-2xs hover:bg-blue-800"
+                  >
+                    Mở bảng Benchmark 5-Fold CV
+                  </button>
+                </div>
+
+                {/* Live 5-Model Execution Summary on Current Product */}
+                {analysis.live_model_comparison &&
+                  analysis.live_model_comparison.length > 0 && (
+                    <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-xs">
+                      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">

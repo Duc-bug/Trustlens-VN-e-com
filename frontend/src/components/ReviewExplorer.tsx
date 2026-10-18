@@ -590,3 +590,489 @@ export default function ReviewExplorer({ reviews }: ReviewExplorerProps) {
                       )}
                     </div>
                   </div>
+                </div>
+
+                {/* Status Badge (Thật / Nghi seeding / Cần xem lại) + 5-Model Consensus */}
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {review.models_flagged_count !== undefined && (
+                    <button
+                      type="button"
+                      onClick={() => toggleExpandChip(review.review_id)}
+                      className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-bold text-slate-700 transition hover:bg-slate-100"
+                      title="Bấm để xem kết quả biểu quyết từ cả 5 mô hình AI"
+                    >
+                      <span>
+                        {review.is_seeding
+                          ? `${Math.max(3, review.models_flagged_count)}/5 mô hình nghi vấn`
+                          : `${Math.max(3, 5 - review.models_flagged_count)}/5 mô hình xác nhận`}
+                      </span>
+                    </button>
+                  )}
+                  <span
+                    className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-extrabold ${statusConfig.badgeClass}`}
+                  >
+                    <StatusIcon className="h-3.5 w-3.5" />
+                    {statusConfig.badgeText}
+                  </span>
+                </div>
+              </div>
+
+              {/* Real Shopee Template Tags & Low Rating Reasons */}
+              {((review.template_tags && review.template_tags.length > 0) ||
+                (review.low_rating_reasons &&
+                  review.low_rating_reasons.length > 0)) && (
+                <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+                  {review.template_tags?.map((tag, tIdx) => (
+                    <span
+                      key={`tag-${tIdx}`}
+                      className="rounded-md border border-blue-100 bg-blue-50/70 px-2 py-0.5 text-[11px] font-semibold text-[#0D5CB6]"
+                    >
+                      {tag}
+                    </span>
+                  ))}
+                  {review.low_rating_reasons?.map((reason, rIdx) => (
+                    <span
+                      key={`reason-${rIdx}`}
+                      className="rounded-md border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-800"
+                    >
+                      Lý do sao thấp: {reason}
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {/* Content: max 3 lines + "Xem thêm" button + keyword highlight */}
+              <div className="mt-3">
+                <p
+                  className={`text-sm leading-relaxed text-gray-800 ${
+                    !isTextExpanded ? "line-clamp-3" : ""
+                  }`}
+                >
+                  {renderHighlightedText(review.comment, search)}
+                </p>
+                {isLongText && (
+                  <button
+                    type="button"
+                    onClick={() => toggleExpandText(review.review_id)}
+                    className="mt-1 text-xs font-bold text-[#1A73E8] hover:underline"
+                  >
+                    {isTextExpanded ? "Thu gọn" : "Xem thêm"}
+                  </button>
+                )}
+              </div>
+
+              {/* Real Shopee 3-Criteria Detailed Sub-Ratings */}
+              {review.detailed_rating &&
+                (review.detailed_rating.product_quality ||
+                  review.detailed_rating.seller_service ||
+                  review.detailed_rating.delivery_service) && (
+                  <div className="mt-2.5 flex flex-wrap items-center gap-2 text-[11px] font-semibold text-gray-600">
+                    {review.detailed_rating.product_quality ? (
+                      <span className="rounded-lg border border-gray-200 bg-gray-50 px-2 py-0.5">
+                        Chất lượng SP:{" "}
+                        <strong className="text-gray-900">
+                          {review.detailed_rating.product_quality}★
+                        </strong>
+                      </span>
+                    ) : null}
+                    {review.detailed_rating.seller_service ? (
+                      <span className="rounded-lg border border-gray-200 bg-gray-50 px-2 py-0.5">
+                        Dịch vụ Shop:{" "}
+                        <strong className="text-gray-900">
+                          {review.detailed_rating.seller_service}★
+                        </strong>
+                      </span>
+                    ) : null}
+                    {review.detailed_rating.delivery_service ? (
+                      <span className="rounded-lg border border-gray-200 bg-gray-50 px-2 py-0.5">
+                        Vận chuyển:{" "}
+                        <strong className="text-gray-900">
+                          {review.detailed_rating.delivery_service}★
+                        </strong>
+                      </span>
+                    ) : null}
+                  </div>
+                )}
+
+              {/* Real Buyer Photos & Videos Scraped from Shopee */}
+              {((review.media_images && review.media_images.length > 0) ||
+                (review.media_videos && review.media_videos.length > 0)) && (
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  {review.media_videos?.map((vid, vIdx) => {
+                    const sec = vid.duration_ms
+                      ? Math.max(1, Math.round(vid.duration_ms / 1000))
+                      : 0;
+                    const durLabel =
+                      sec > 0
+                        ? `${Math.floor(sec / 60)}:${String(sec % 60).padStart(
+                            2,
+                            "0"
+                          )}`
+                        : "";
+                    return (
+                      <button
+                        key={`vid-${vIdx}`}
+                        type="button"
+                        onClick={() =>
+                          setLightboxMedia({
+                            type: "video",
+                            url: vid.url || vid.cover,
+                            cover: vid.cover,
+                            review,
+                          })
+                        }
+                        className="group relative h-16 w-16 overflow-hidden rounded-xl border border-gray-200 bg-gray-900 shadow-2xs"
+                        title="Bấm để xem video thực tế của người mua"
+                      >
+                        {vid.cover && (
+                          <img
+                            src={vid.cover}
+                            alt="Video review"
+                            className="h-full w-full object-cover opacity-85 transition group-hover:scale-105"
+                          />
+                        )}
+                        <div className="absolute inset-0 flex items-center justify-center bg-black/30">
+                          <Video className="h-4 w-4 text-white" />
+                        </div>
+                        {durLabel && (
+                          <span className="absolute bottom-1 right-1 rounded bg-black/75 px-1 py-0.2 text-[9px] font-bold text-white">
+                            {durLabel}
+                          </span>
+                        )}
+                        {vid.template_video && (
+                          <span className="absolute left-1 top-1 rounded bg-red-600/90 px-1 text-[8px] font-extrabold text-white">
+                            Mẫu
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+
+                  {review.media_images?.slice(0, 6).map((imgUrl, imgIdx) => (
+                    <button
+                      key={`img-${imgIdx}`}
+                      type="button"
+                      onClick={() =>
+                        setLightboxMedia({
+                          type: "image",
+                          url: imgUrl,
+                          review,
+                        })
+                      }
+                      className="h-16 w-16 overflow-hidden rounded-xl border border-gray-200 bg-gray-100 shadow-2xs"
+                      title="Bấm để phóng to ảnh thực tế của người mua"
+                    >
+                      <img
+                        src={imgUrl}
+                        alt={`Ảnh review ${imgIdx + 1}`}
+                        className="h-full w-full object-cover transition hover:scale-105"
+                      />
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Seller Reply from Shopee */}
+              {review.seller_reply && (
+                <div className="mt-3 flex items-start gap-2 rounded-xl border border-gray-200 bg-gray-50 p-3 text-xs text-gray-700">
+                  <CornerDownRight className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#FF6B35]" />
+                  <div>
+                    <span className="font-extrabold text-gray-900">
+                      Phản hồi của Người bán:{" "}
+                    </span>
+                    <span>{review.seller_reply}</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Concrete Real-Data Chips for both Suspicious AND Verified Real Reviews */}
+              {(shortChips.length > 0 || authChips.length > 0) && (
+                <div className="mt-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {shortChips.map((chipText, idx) => (
+                      <button
+                        key={`seed-${idx}`}
+                        type="button"
+                        onClick={() => toggleExpandChip(review.review_id)}
+                        className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-white px-2.5 py-1 text-xs font-bold text-[#DC2626] transition hover:bg-red-50"
+                        title="Bấm để xem số liệu kiểm chứng thực tế của bình luận này"
+                      >
+                        <span>⚠ {chipText}</span>
+                        {isChipExpanded ? (
+                          <ChevronUp className="h-3.5 w-3.5" />
+                        ) : (
+                          <ChevronDown className="h-3.5 w-3.5" />
+                        )}
+                      </button>
+                    ))}
+
+                    {authChips.map((chipText, idx) => (
+                      <button
+                        key={`auth-${idx}`}
+                        type="button"
+                        onClick={() => toggleExpandChip(review.review_id)}
+                        className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50/70 px-2.5 py-1 text-xs font-bold text-emerald-800 transition hover:bg-emerald-100"
+                        title="Bấm để xem số liệu xác thực từ Shopee của bình luận này"
+                      >
+                        <span>✓ {chipText}</span>
+                        {isChipExpanded ? (
+                          <ChevronUp className="h-3.5 w-3.5" />
+                        ) : (
+                          <ChevronDown className="h-3.5 w-3.5" />
+                        )}
+                      </button>
+                    ))}
+                  </div>
+
+                  {isChipExpanded && (
+                    <div className="mt-2.5 rounded-xl border border-gray-200 bg-white p-3 text-xs text-gray-700 shadow-2xs">
+                      <div className="font-extrabold text-gray-900">
+                        Số liệu kiểm chứng thực tế từ Shopee của đánh giá này:
+                      </div>
+                      <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        <div className="flex items-center justify-between rounded-lg bg-gray-50 px-2.5 py-1.5">
+                          <span className="text-gray-500">
+                            Độ trùng lặp nội dung:
+                          </span>
+                          <strong
+                            className={
+                              toPct(review.cosine_similarity_max) >= 50
+                                ? "text-[#DC2626]"
+                                : "text-[#16A34A]"
+                            }
+                          >
+                            {Math.round(toPct(review.cosine_similarity_max))}%
+                          </strong>
+                        </div>
+                        <div className="flex items-center justify-between rounded-lg bg-gray-50 px-2.5 py-1.5">
+                          <span className="text-gray-500">
+                            Mật độ đơn cùng khung 15p:
+                          </span>
+                          <strong
+                            className={
+                              review.burst_15m_count >= 4
+                                ? "text-[#DC2626]"
+                                : "text-gray-900"
+                            }
+                          >
+                            {Math.max(1, review.burst_15m_count)} đánh giá
+                          </strong>
+                        </div>
+                        <div className="flex items-center justify-between rounded-lg bg-gray-50 px-2.5 py-1.5">
+                          <span className="text-gray-500">
+                            Tần suất đánh giá tại shop:
+                          </span>
+                          <strong className="text-gray-900">
+                            {Math.max(1, review.user_total_reviews)} lần
+                          </strong>
+                        </div>
+                        <div className="flex items-center justify-between rounded-lg bg-gray-50 px-2.5 py-1.5">
+                          <span className="text-gray-500">
+                            Bằng chứng mua hàng thật:
+                          </span>
+                          <strong className="text-emerald-700">
+                            {review.is_repeated_purchase
+                              ? "Khách mua lại • "
+                              : ""}
+                            {review.media_images?.length || 0} ảnh •{" "}
+                            {review.media_videos?.length || 0} video
+                          </strong>
+                        </div>
+                      </div>
+
+                      {review.model_votes &&
+                        Object.keys(review.model_votes).length > 0 && (
+                          <div className="mt-3 border-t border-gray-100 pt-2.5">
+                            <div className="mb-1.5 font-extrabold text-gray-900">
+                              Kết quả đánh giá từ cả 5 mô hình học máy:
+                            </div>
+                            <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-5">
+                              {Object.entries(review.model_votes).map(
+                                ([modelName, votePct]) => {
+                                  const isFlagged = votePct >= 50;
+                                  return (
+                                    <div
+                                      key={modelName}
+                                      className={`rounded-lg border px-2 py-1.5 ${
+                                        isFlagged
+                                          ? "border-red-200 bg-red-50/50"
+                                          : "border-emerald-200 bg-emerald-50/40"
+                                      }`}
+                                    >
+                                      <div className="truncate text-[10px] font-bold text-gray-600">
+                                        {modelName}
+                                      </div>
+                                      <div className="mt-0.5 flex items-center justify-between">
+                                        <span
+                                          className={`text-[11px] font-extrabold ${
+                                            isFlagged
+                                              ? "text-[#DC2626]"
+                                              : "text-[#16A34A]"
+                                          }`}
+                                        >
+                                          {isFlagged ? "Nghi vấn" : "Hợp lệ"}
+                                        </span>
+                                        <span className="text-[10px] font-semibold text-gray-500">
+                                          ({Math.round(votePct)}%)
+                                        </span>
+                                      </div>
+                                    </div>
+                                  );
+                                }
+                              )}
+                            </div>
+                          </div>
+                        )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+
+        {filteredAndSorted.length === 0 && (
+          <div className="rounded-2xl border border-dashed border-gray-200 py-10 text-center text-sm font-medium text-gray-500">
+            Không tìm thấy bình luận nào khớp với bộ lọc.
+          </div>
+        )}
+      </div>
+
+      {/* Load More Reviews Button */}
+      {visibleCount < filteredAndSorted.length && (
+        <div className="mt-5 text-center">
+          <button
+            type="button"
+            onClick={() => setVisibleCount((prev) => prev + 10)}
+            className="inline-flex items-center gap-2 rounded-xl border border-gray-300 bg-white px-5 py-2.5 text-sm font-extrabold text-gray-800 shadow-2xs transition hover:bg-gray-50"
+          >
+            <span>
+              Tải thêm bình luận (còn {filteredAndSorted.length - visibleCount})
+            </span>
+            <ChevronDown className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
+      {/* IN-APP LIGHTBOX MODAL FOR BUYER PHOTOS & VIDEOS */}
+      {lightboxMedia && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-xs"
+          onClick={() => setLightboxMedia(null)}
+        >
+          <div
+            className="relative flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl md:flex-row"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => setLightboxMedia(null)}
+              className="absolute right-3 top-3 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-black/60 text-white transition hover:bg-black"
+              aria-label="Đóng"
+            >
+              <X className="h-5 w-5" />
+            </button>
+
+            <div className="flex flex-1 items-center justify-center bg-gray-950 p-3 md:min-h-[420px]">
+              {lightboxMedia.type === "video" ? (
+                <video
+                  src={lightboxMedia.url}
+                  poster={lightboxMedia.cover}
+                  controls
+                  autoPlay
+                  className="max-h-[75vh] w-full rounded-xl object-contain"
+                />
+              ) : (
+                <img
+                  src={lightboxMedia.url}
+                  alt="Ảnh thực tế người mua"
+                  className="max-h-[75vh] w-full rounded-xl object-contain"
+                />
+              )}
+            </div>
+
+            <div className="flex w-full flex-col justify-between border-t border-gray-100 p-5 md:w-80 md:border-l md:border-t-0">
+              <div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-extrabold text-gray-900">
+                    {lightboxMedia.review.user_name}
+                  </span>
+                  <span
+                    className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${
+                      lightboxMedia.review.is_seeding
+                        ? "bg-red-100 text-[#DC2626]"
+                        : "bg-emerald-100 text-[#16A34A]"
+                    }`}
+                  >
+                    {lightboxMedia.review.is_seeding ? "Nghi vấn" : "Đánh giá thật"}
+                  </span>
+                </div>
+
+                <div className="mt-1 flex items-center gap-1">
+                  {Array.from({ length: 5 }).map((_, i) => (
+                    <Star
+                      key={i}
+                      className={`h-3.5 w-3.5 ${
+                        i < lightboxMedia.review.rating
+                          ? "fill-[#F59E0B] text-[#F59E0B]"
+                          : "text-gray-300"
+                      }`}
+                    />
+                  ))}
+                  <span className="ml-1 text-xs font-medium text-gray-400">
+                    {lightboxMedia.review.timestamp.slice(0, 16)}
+                  </span>
+                </div>
+
+                {lightboxMedia.review.variation && (
+                  <div className="mt-2 rounded-lg bg-gray-50 px-2.5 py-1 text-xs font-semibold text-gray-600">
+                    Phân loại: <strong>{lightboxMedia.review.variation}</strong>
+                  </div>
+                )}
+
+                <p className="mt-3 max-h-48 overflow-y-auto text-xs leading-relaxed text-gray-700">
+                  {lightboxMedia.review.comment}
+                </p>
+              </div>
+
+              {lightboxMedia.review.media_images &&
+                lightboxMedia.review.media_images.length > 1 && (
+                  <div className="mt-4 border-t border-gray-100 pt-3">
+                    <div className="mb-1.5 text-[11px] font-bold text-gray-500">
+                      Ảnh khác trong cùng đánh giá:
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {lightboxMedia.review.media_images.map((u, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() =>
+                            setLightboxMedia({
+                              type: "image",
+                              url: u,
+                              review: lightboxMedia.review,
+                            })
+                          }
+                          className={`h-11 w-11 overflow-hidden rounded-lg border-2 ${
+                            lightboxMedia.url === u
+                              ? "border-[#1A73E8]"
+                              : "border-transparent opacity-70 hover:opacity-100"
+                          }`}
+                        >
+                          <img
+                            src={u}
+                            alt=""
+                            className="h-full w-full object-cover"
+                          />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

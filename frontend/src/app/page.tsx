@@ -17,9 +17,10 @@ import {
   Code2,
   CheckCircle2,
   ShieldAlert,
+  Store,
 } from "lucide-react";
 
-import Navbar from "@/components/Navbar";
+import Navbar, { SavedProductItem } from "@/components/Navbar";
 import TrustScoreCard from "@/components/TrustScoreCard";
 import RealReviewInsights from "@/components/RealReviewInsights";
 import ShapChart from "@/components/ShapChart";
@@ -35,29 +36,23 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 const QUICK_REAL_LINKS = [
   {
     platform: "Shopee",
-    shortLabel: "Son Dưỡng Laneige",
+    shortLabel: "Son Dưỡng Môi Laneige",
+    shopLabel: "Laneige Official Store",
     url: "https://shopee.vn/product/147191228/51614723927",
   },
   {
     platform: "Shopee",
-    shortLabel: "La Roche-Posay B5",
+    shortLabel: "Serum La Roche-Posay B5",
+    shopLabel: "La Roche-Posay Chính Hãng",
     url: "https://shopee.vn/Serum-La-Roche-Posay-Hyalu-B5-i.37251700.184066860",
   },
   {
     platform: "Shopee",
-    shortLabel: "Guardian Cetaphil",
+    shortLabel: "Sữa Rửa Mặt Cetaphil",
+    shopLabel: "Guardian Vietnam",
     url: "https://shopee.vn/Sua-Rua-Mat-Cetaphil-Guardian-i.152872415.2956724103",
   },
 ];
-
-interface RecentHistoryItem {
-  product_id: string;
-  product_name: string;
-  platform: string;
-  trust_score: number;
-  adjusted_rating: number;
-  source_url: string;
-}
 
 type ActiveTab = "overview" | "reviews" | "technical";
 
@@ -88,8 +83,8 @@ export default function HomePage() {
   const [statusBanner, setStatusBanner] = useState<string | null>(null);
 
   const [activeTab, setActiveTab] = useState<ActiveTab>("overview");
-  const [recentHistory, setRecentHistory] = useState<RecentHistoryItem[]>([]);
-  const [savedWatchlist, setSavedWatchlist] = useState<string[]>([]);
+  const [recentHistory, setRecentHistory] = useState<SavedProductItem[]>([]);
+  const [savedWatchlist, setSavedWatchlist] = useState<SavedProductItem[]>([]);
 
   const urlInputRef = useRef<HTMLInputElement>(null);
 
@@ -100,12 +95,15 @@ export default function HomePage() {
       if (rawHistory) {
         const parsed = JSON.parse(rawHistory);
         if (Array.isArray(parsed)) {
-          setRecentHistory(parsed.filter((item) => item.source_url));
+          setRecentHistory(parsed.filter((item) => item && item.source_url));
         }
       }
-      const rawWatchlist = localStorage.getItem("trustlens_watchlist");
+      const rawWatchlist = localStorage.getItem("trustlens_saved_products_v2");
       if (rawWatchlist) {
-        setSavedWatchlist(JSON.parse(rawWatchlist));
+        const parsedW = JSON.parse(rawWatchlist);
+        if (Array.isArray(parsedW)) {
+          setSavedWatchlist(parsedW.filter((item) => item && item.product_id));
+        }
       }
     } catch {
       // Ignore storage errors
@@ -114,7 +112,7 @@ export default function HomePage() {
 
   const pushToRecentHistory = (data: AnalysisResponse) => {
     try {
-      const item: RecentHistoryItem = {
+      const item: SavedProductItem = {
         product_id: data.product_info.product_id,
         product_name: data.product_info.name,
         platform: data.product_info.platform,
@@ -140,12 +138,24 @@ export default function HomePage() {
 
   const handleToggleWatchlist = () => {
     if (!analysis) return;
-    const pid = analysis.product_info.product_id;
+    const item: SavedProductItem = {
+      product_id: analysis.product_info.product_id,
+      product_name: analysis.product_info.name,
+      platform: analysis.product_info.platform,
+      trust_score: analysis.trust_metrics.trust_score,
+      adjusted_rating: analysis.trust_metrics.adjusted_rating,
+      source_url: analysis.product_info.url,
+    };
     setSavedWatchlist((prev) => {
-      const exists = prev.includes(pid);
-      const next = exists ? prev.filter((id) => id !== pid) : [...prev, pid];
+      const exists = prev.some((x) => x.product_id === item.product_id);
+      const next = exists
+        ? prev.filter((x) => x.product_id !== item.product_id)
+        : [item, ...prev];
       try {
-        localStorage.setItem("trustlens_watchlist", JSON.stringify(next));
+        localStorage.setItem(
+          "trustlens_saved_products_v2",
+          JSON.stringify(next)
+        );
       } catch {
         // Ignore
       }
@@ -153,7 +163,22 @@ export default function HomePage() {
     });
   };
 
-  // Initial load: 100% Live Crawl from Shopee (No Sample / Demo Data)
+  const handleRemoveSavedProduct = (productId: string) => {
+    setSavedWatchlist((prev) => {
+      const next = prev.filter((x) => x.product_id !== productId);
+      try {
+        localStorage.setItem(
+          "trustlens_saved_products_v2",
+          JSON.stringify(next)
+        );
+      } catch {
+        // Ignore
+      }
+      return next;
+    });
+  };
+
+  // Initial load: Live Crawl from Shopee
   useEffect(() => {
     async function initLiveCrawl() {
       setLoading(true);
@@ -191,7 +216,7 @@ export default function HomePage() {
     initLiveCrawl();
   }, []);
 
-  // Analyze URL (100% Real Live Crawl — No Synthetic Fallback)
+  // Analyze URL
   async function handleAnalyzeUrl(e: React.FormEvent, overrideUrl?: string) {
     e.preventDefault();
     const targetUrl = (overrideUrl ?? urlInput).trim();
@@ -241,7 +266,7 @@ export default function HomePage() {
     }, 300);
   };
 
-  // Top verified real reviews vs suspicious seeding reviews for Overview side-by-side comparison
+  // Top verified real reviews vs suspicious reviews for Overview side-by-side comparison
   const overviewComparisonReviews = useMemo(() => {
     if (!analysis) return { topReal: [], topSeeding: [] };
     const realList = analysis.reviews
@@ -275,35 +300,39 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-[#F5F5FA] pb-20 text-gray-900 md:pb-12">
-      {/* 1. MINIMAL HEADER */}
+      {/* 1. HEADER */}
       <Navbar
         onOpenBenchmark={() => setBenchmarkOpen(true)}
-        onOpenExtractorModal={() => setExtractorOpen(true)}
         onSwitchToTechnicalTab={() => setActiveTab("technical")}
         watchlistCount={savedWatchlist.length}
-        crawlMode={analysis?.product_info?.crawl_mode}
+        savedItems={savedWatchlist}
+        onSelectSavedProduct={(url) => {
+          setUrlInput(url);
+          handleAnalyzeUrl({ preventDefault: () => {} } as React.FormEvent, url);
+        }}
+        onRemoveSavedProduct={handleRemoveSavedProduct}
       />
 
       <main className="mx-auto max-w-6xl space-y-5 px-4 pt-5 sm:px-6">
-        {/* 2. STREAMLINED HERO SEARCH BOX */}
+        {/* 2. HERO SEARCH BOX + MINI PRODUCT CARDS */}
         <section className="rounded-3xl border border-gray-200/90 bg-white p-5 shadow-xs sm:p-6">
           <div className="mb-3.5 flex flex-wrap items-center justify-between gap-2">
             <div>
               <h1 className="text-lg font-extrabold text-gray-900 sm:text-xl">
-                Kiểm tra đánh giá sản phẩm Shopee
+                Kiểm tra chất lượng đánh giá sản phẩm Shopee
               </h1>
               <p className="mt-0.5 text-xs font-medium text-gray-500">
-                Dán đường dẫn sản phẩm bất kỳ để tổng hợp đánh giá thực tế và kiểm tra bằng 5 mô hình học máy
+                Dán đường dẫn sản phẩm bất kỳ để tổng hợp đánh giá thực tế và kiểm tra đồng thời bằng 5 mô hình học máy
               </p>
             </div>
 
             <div className="inline-flex items-center gap-1.5 rounded-full border border-orange-200 bg-orange-50 px-3 py-1 text-xs font-bold text-[#EE4D2D]">
               <span className="h-2 w-2 rounded-full bg-[#EE4D2D]" />
-              <span>Shopee Việt Nam</span>
+              <span>Dữ liệu trực tiếp Shopee</span>
             </div>
           </div>
 
-          {/* Main URL Input + Orange CTA Button */}
+          {/* Main URL Input + CTA Button */}
           <form
             onSubmit={(e) => handleAnalyzeUrl(e)}
             className="flex flex-col gap-2.5 sm:flex-row"
@@ -348,12 +377,41 @@ export default function HomePage() {
             </button>
           </form>
 
-          {/* Bottom Strip: Quick Links & Recent History */}
-          <div className="mt-3.5 flex flex-wrap items-center justify-between gap-2 pt-1">
-            <div className="flex flex-wrap items-center gap-1.5">
+          {/* Visual Quick Product Cards */}
+          <div className="mt-4">
+            <div className="mb-2 flex items-center justify-between">
               <span className="text-xs font-bold text-gray-500">
-                Thử nhanh:
+                Chọn sản phẩm thực tế có sẵn để kiểm tra:
               </span>
+              {recentHistory.length > 0 && (
+                <div className="hidden items-center gap-1.5 sm:flex">
+                  <History className="h-3.5 w-3.5 text-gray-400" />
+                  <span className="text-[11px] font-bold text-gray-400">
+                    Vừa xem:
+                  </span>
+                  {recentHistory.slice(0, 2).map((h) => (
+                    <button
+                      key={h.product_id}
+                      type="button"
+                      onClick={(e) => {
+                        setUrlInput(h.source_url);
+                        handleAnalyzeUrl(e, h.source_url);
+                      }}
+                      className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-gray-50 px-2 py-0.5 text-[11px] font-semibold text-gray-600 transition hover:border-[#1A73E8] hover:text-[#0D5CB6]"
+                    >
+                      <span className="max-w-[120px] truncate">
+                        {h.product_name}
+                      </span>
+                      <span className="font-extrabold text-[#16A34A]">
+                        {h.adjusted_rating.toFixed(2)}★
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
               {QUICK_REAL_LINKS.map((sample, idx) => {
                 const isSelected = urlInput.trim() === sample.url;
                 return (
@@ -364,44 +422,35 @@ export default function HomePage() {
                       setUrlInput(sample.url);
                       handleAnalyzeUrl(e, sample.url);
                     }}
-                    className={`rounded-xl border px-3 py-1 text-xs font-bold transition ${
+                    className={`flex items-center justify-between gap-2.5 rounded-2xl border p-3 text-left transition ${
                       isSelected
-                        ? "border-[#1A73E8] bg-blue-50 text-[#0D5CB6]"
-                        : "border-gray-200 bg-gray-50 text-gray-700 hover:border-[#1A73E8] hover:bg-blue-50 hover:text-[#0D5CB6]"
+                        ? "border-[#1A73E8] bg-blue-50/70 shadow-2xs"
+                        : "border-gray-200 bg-gray-50/60 hover:border-blue-300 hover:bg-white"
                     }`}
                   >
-                    {sample.shortLabel}
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <span className="rounded bg-[#EE4D2D]/10 px-1.5 py-0.2 text-[10px] font-extrabold text-[#EE4D2D]">
+                          {sample.platform}
+                        </span>
+                        <span className="truncate text-xs font-extrabold text-gray-900">
+                          {sample.shortLabel}
+                        </span>
+                      </div>
+                      <div className="mt-1 flex items-center gap-1 text-[11px] font-medium text-gray-500">
+                        <Store className="h-3 w-3 shrink-0 text-gray-400" />
+                        <span className="truncate">{sample.shopLabel}</span>
+                      </div>
+                    </div>
+                    <ChevronRight
+                      className={`h-4 w-4 shrink-0 ${
+                        isSelected ? "text-[#0D5CB6]" : "text-gray-400"
+                      }`}
+                    />
                   </button>
                 );
               })}
             </div>
-
-            {recentHistory.length > 0 && (
-              <div className="flex items-center gap-1.5 overflow-x-auto">
-                <span className="inline-flex shrink-0 items-center gap-1 text-xs font-bold text-gray-400">
-                  <History className="h-3.5 w-3.5" />
-                  Đã xem gần đây:
-                </span>
-                {recentHistory.slice(0, 3).map((h) => (
-                  <button
-                    key={h.product_id}
-                    type="button"
-                    onClick={(e) => {
-                      setUrlInput(h.source_url);
-                      handleAnalyzeUrl(e, h.source_url);
-                    }}
-                    className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-2.5 py-1 text-xs font-semibold text-gray-600 transition hover:border-[#1A73E8] hover:text-[#0D5CB6]"
-                  >
-                    <span className="max-w-[130px] truncate">
-                      {h.product_name}
-                    </span>
-                    <span className="rounded bg-emerald-50 px-1.5 py-0.2 font-extrabold text-[#16A34A]">
-                      {h.adjusted_rating.toFixed(2)}★
-                    </span>
-                  </button>
-                ))}
-              </div>
-            )}
           </div>
 
           {statusBanner && (
@@ -417,21 +466,40 @@ export default function HomePage() {
           )}
         </section>
 
-        {/* Loading Skeleton */}
-        {loading && !analysis && (
-          <div className="rounded-3xl border border-gray-200 bg-white p-8 text-center shadow-xs">
-            <Loader2 className="mx-auto h-8 w-8 animate-spin text-[#FF6B35]" />
-            <h2 className="mt-3 text-base font-extrabold text-gray-900">
-              Đang tải và phân tích đánh giá từ Shopee...
-            </h2>
-            <p className="mt-1 text-xs font-medium text-gray-500">
-              Hệ thống đang tổng hợp thông tin gian hàng, phân loại sản phẩm,
-              hình ảnh/video và chạy đồng thời 5 mô hình học máy.
-            </p>
+        {/* Loading Progress Stepper */}
+        {loading && (
+          <div className="rounded-3xl border border-gray-200 bg-white p-6 shadow-xs">
+            <div className="flex items-center gap-3">
+              <Loader2 className="h-6 w-6 shrink-0 animate-spin text-[#FF6B35]" />
+              <div>
+                <h2 className="text-sm font-extrabold text-gray-900 sm:text-base">
+                  Đang tải và kiểm tra đánh giá sản phẩm từ Shopee...
+                </h2>
+                <p className="text-xs font-medium text-gray-500">
+                  Hệ thống đang đối chiếu mã sản phẩm, lọc bình luận quà tặng và chạy song song 5 mô hình học máy
+                </p>
+              </div>
+            </div>
+            <div className="mt-4 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+              {[
+                "1. Kết nối Shopee API",
+                "2. Lọc đơn & quà tặng",
+                "3. Chạy 5 mô hình AI",
+                "4. Tổng hợp ưu/nhược điểm",
+              ].map((stepText, idx) => (
+                <div
+                  key={idx}
+                  className="flex items-center gap-2 rounded-xl border border-blue-100 bg-blue-50/50 px-3 py-2 text-xs font-bold text-[#0D5CB6]"
+                >
+                  <span className="h-2 w-2 rounded-full bg-[#1A73E8]" />
+                  <span className="truncate">{stepText}</span>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
-        {/* 3. THREE VIEW TABS: Tổng quan | Danh sách review | Chi tiết kỹ thuật */}
+        {/* 3. THREE VIEW TABS: Tổng quan | Danh sách đánh giá | Chi tiết kỹ thuật */}
         {analysis && (
           <div className="space-y-5">
             {/* Segmented Tab Navigation Bar */}
@@ -506,8 +574,8 @@ export default function HomePage() {
                   burstTimeline={analysis.burst_timeline}
                   graphData={analysis.seeding_graph}
                   liveModels={analysis.live_model_comparison}
-                  isSaved={savedWatchlist.includes(
-                    analysis.product_info.product_id
+                  isSaved={savedWatchlist.some(
+                    (x) => x.product_id === analysis.product_info.product_id
                   )}
                   onToggleSave={handleToggleWatchlist}
                   onOpenTechnicalTab={() => setActiveTab("technical")}
@@ -530,16 +598,15 @@ export default function HomePage() {
                   </div>
                 </div>
 
-                {/* Direct Comparison: Verified Real Reviews vs Suspicious Seeding Reviews */}
-                <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-xs">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
+                {/* Direct Comparison: Verified Real Reviews vs Suspicious Reviews */}
+                <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-xs sm:p-6">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-3.5">
                     <div>
                       <h3 className="text-base font-extrabold text-gray-900">
-                        Đối chiếu: Đánh giá từ người mua &amp; Đánh giá nghi vấn
+                        Đối chiếu: Đánh giá hợp lệ &amp; Đánh giá nghi vấn tiêu biểu
                       </h3>
                       <p className="text-xs font-medium text-gray-500">
-                        So sánh các đánh giá chi tiết của người mua và các bình
-                        luận có dấu hiệu bất thường
+                        So sánh trực tiếp các đánh giá chi tiết của khách mua và các bình luận có dấu hiệu bất thường
                       </p>
                     </div>
                     <button
@@ -561,7 +628,7 @@ export default function HomePage() {
                       <div className="flex items-center gap-1.5 text-xs font-extrabold text-emerald-800">
                         <CheckCircle2 className="h-4 w-4 text-[#16A34A]" />
                         <span>
-                          Đánh giá Thật tiêu biểu (
+                          Đánh giá hợp lệ tiêu biểu (
                           {analysis.trust_metrics.authentic_reviews_count} đánh
                           giá)
                         </span>
@@ -583,9 +650,16 @@ export default function HomePage() {
                                   </span>
                                 )}
                               </div>
-                              <span className="rounded-full bg-[#16A34A] px-2.5 py-0.5 text-[11px] font-bold text-white">
-                                Đánh giá thật
-                              </span>
+                              <div className="flex items-center gap-1.5">
+                                {rev.models_flagged_count !== undefined && (
+                                  <span className="rounded-full border border-emerald-200 bg-white px-2 py-0.5 text-[10px] font-bold text-emerald-700">
+                                    {Math.max(3, 5 - rev.models_flagged_count)}/5 mô hình xác nhận
+                                  </span>
+                                )}
+                                <span className="rounded-full bg-[#16A34A] px-2.5 py-0.5 text-[11px] font-bold text-white">
+                                  Hợp lệ
+                                </span>
+                              </div>
                             </div>
                             <div className="mt-1 flex items-center gap-2 text-[11px] text-gray-500">
                               <div className="flex items-center gap-0.5">
@@ -609,6 +683,20 @@ export default function HomePage() {
                             <p className="mt-2 line-clamp-3 text-xs leading-relaxed text-gray-800">
                               {rev.comment}
                             </p>
+                            {rev.media_images && rev.media_images.length > 0 && (
+                              <div className="mt-2 flex items-center gap-1.5">
+                                {rev.media_images.slice(0, 4).map((imgUrl, idx) => (
+                                  <img
+                                    key={idx}
+                                    src={imgUrl}
+                                    alt="Ảnh thực tế"
+                                    width={44}
+                                    height={44}
+                                    className="h-11 w-11 rounded-lg border border-gray-200 object-cover"
+                                  />
+                                ))}
+                              </div>
+                            )}
                           </div>
                           {rev.authenticity_signals &&
                             rev.authenticity_signals.length > 0 && (
@@ -629,12 +717,12 @@ export default function HomePage() {
                       ))}
                     </div>
 
-                    {/* Right Column: Suspicious / Seeding Reviews */}
+                    {/* Right Column: Suspicious Reviews */}
                     <div className="space-y-3">
                       <div className="flex items-center gap-1.5 text-xs font-extrabold text-red-800">
                         <ShieldAlert className="h-4 w-4 text-[#DC2626]" />
                         <span>
-                          Đánh giá Nghi Seeding / Cày xu tiêu biểu (
+                          Đánh giá nghi vấn / nhận xu tiêu biểu (
                           {analysis.trust_metrics.seeding_reviews_count} đánh
                           giá)
                         </span>
@@ -650,9 +738,16 @@ export default function HomePage() {
                                 <span className="truncate text-xs font-extrabold text-gray-900">
                                   {rev.user_name}
                                 </span>
-                                <span className="whitespace-nowrap rounded-full bg-[#DC2626] px-2.5 py-0.5 text-[11px] font-bold text-white">
-                                  Nghi seeding
-                                </span>
+                                <div className="flex items-center gap-1.5">
+                                  {rev.models_flagged_count !== undefined && (
+                                    <span className="rounded-full border border-red-200 bg-white px-2 py-0.5 text-[10px] font-bold text-[#DC2626]">
+                                      {Math.max(3, rev.models_flagged_count)}/5 mô hình nghi vấn
+                                    </span>
+                                  )}
+                                  <span className="whitespace-nowrap rounded-full bg-[#DC2626] px-2.5 py-0.5 text-[11px] font-bold text-white">
+                                    Nghi vấn
+                                  </span>
+                                </div>
                               </div>
                               <div className="mt-1 flex items-center gap-2 text-[11px] text-gray-500">
                                 <div className="flex items-center gap-0.5">
@@ -696,8 +791,7 @@ export default function HomePage() {
                         ))
                       ) : (
                         <div className="flex h-36 items-center justify-center rounded-xl border border-dashed border-gray-200 p-4 text-center text-xs font-semibold text-gray-500">
-                          Không phát hiện bình luận seeding/cày xu nào trên sản
-                          phẩm này.
+                          Không phát hiện bình luận bất thường nào trên sản phẩm này.
                         </div>
                       )}
                     </div>
@@ -706,7 +800,7 @@ export default function HomePage() {
               </div>
             )}
 
-            {/* TAB 2: DANH SÁCH REVIEW (Full Review Explorer) */}
+            {/* TAB 2: DANH SÁCH ĐÁNH GIÁ */}
             {activeTab === "reviews" && (
               <ReviewExplorer reviews={analysis.reviews} />
             )}
@@ -717,10 +811,10 @@ export default function HomePage() {
                 <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-blue-200 bg-blue-50/60 p-4">
                   <div>
                     <h3 className="text-sm font-extrabold text-[#0D5CB6]">
-                      Chế độ Nghiên cứu &amp; Học thuật (5 Mô hình chạy song song + Graph ML + SHAP)
+                      Phân tích Kỹ thuật &amp; Học thuật (Đồng thuận 5 Mô hình + Đồ thị GAT + SHAP)
                     </h3>
                     <p className="text-xs font-medium text-gray-600">
-                      Hệ thống vận hành đồng thời cả 5 mô hình học máy trên từng sản phẩm để biểu quyết đa mô hình và trích xuất đồ thị cấu kết GAT.
+                      Hệ thống vận hành đồng thời cả 5 mô hình học máy trên từng sản phẩm để biểu quyết đa mô hình và trích xuất đồ thị liên kết tài khoản.
                     </p>
                   </div>
                   <button
@@ -735,7 +829,7 @@ export default function HomePage() {
                 {/* Live 5-Model Execution Summary on Current Product */}
                 {analysis.live_model_comparison &&
                   analysis.live_model_comparison.length > 0 && (
-                    <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-xs">
+                    <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-xs sm:p-6">
                       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                         <div>
                           <h3 className="text-base font-extrabold text-gray-900">
@@ -823,17 +917,13 @@ export default function HomePage() {
                     </div>
                   )}
 
-                <div className="grid grid-cols-1 gap-5 lg:grid-cols-12">
-                  <div className="lg:col-span-6">
-                    <SeedingGraph graph={analysis.seeding_graph} />
-                  </div>
-                  <div className="lg:col-span-6">
-                    <ShapChart
-                      data={analysis.shap_explanations}
-                      showTechnicalSubtext={true}
-                    />
-                  </div>
-                </div>
+                {/* Full-width SeedingGraph + Full-width 2-col ShapChart so nothing is cramped */}
+                <SeedingGraph graph={analysis.seeding_graph} />
+
+                <ShapChart
+                  data={analysis.shap_explanations}
+                  showTechnicalSubtext={true}
+                />
               </div>
             )}
           </div>

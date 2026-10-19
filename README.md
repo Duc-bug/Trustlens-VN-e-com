@@ -15,7 +15,7 @@
 1. **Tải Đánh Giá Trực Tiếp Đa Sàn (Live Multi-Platform Crawler & Importer):**
    - **Shopee Deep Live Crawler (`item/get_ratings` + `shop/get_ratings`):** Kết hợp truy vấn trực tiếp theo sản phẩm và phân trang sâu trên luồng đánh giá của Shop (lên tới 1,500 bình luận), đối chiếu chính xác `itemid` trong các đơn hàng ghép nhiều món, tự động loại bỏ quà tặng đính kèm (`[HB GIFT]`, `[GIFT]`) và bóc tách văn bản tự viết (`free_text_word_count`) khỏi khung tiêu đề mẫu của Shopee (`Đúng với mô tả:`, `Chất lượng sản phẩm:`).
    - **Tiki.vn Live API v2:** Tải trực tiếp toàn bộ đánh giá thật, lịch sử tài khoản người mua, hình ảnh thực tế và phản hồi từ nhà bán hàng theo thời gian thực ngay khi dán URL sản phẩm Tiki.
-   - **TikTok Shop / Google Maps / Lazada:** Hỗ trợ lấy dữ liệu trực tiếp qua đường dẫn sản phẩm, tiện ích **1-Click Browser Extractor (F12 Console)** xuất trực tiếp bình luận từ tab trình duyệt đang mở, hoặc tải file `.CSV`/`.JSON` lên hệ thống.
+   - **TikTok Shop / Google Maps / Lazada:** Hỗ trợ lấy dữ liệu trực tiếp qua đường dẫn sản phẩm, xuất bình luận từ trình duyệt hoặc tải file `.CSV`/`.JSON` lên hệ thống.
    - **Tập dữ liệu thực nghiệm 2,430 đánh giá tiếng Việt (`real_ecommerce_reviews.csv`):** Phục vụ huấn luyện và kiểm định chéo 5-Fold Cross-Validation.
 
 2. **Kiến Trúc Đồng Thuận 5 Mô Hình Thời Gian Thực (5-Model Live Consensus Architecture - 39 Features):**

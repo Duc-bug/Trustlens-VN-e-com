@@ -10,10 +10,61 @@ const beVietnamPro = Be_Vietnam_Pro({
 });
 
 export const metadata: Metadata = {
-  title: "TrustLens VN | Soi review ảo & phát hiện seeding trên sàn TMĐT",
+  title: "TrustLens VN | Kiểm tra đánh giá sản phẩm TMĐT",
   description:
-    "Hệ thống phân tích độ tin cậy sản phẩm, phát hiện bình luận seeding, buff đơn theo khung giờ và spam cày xu trên Shopee.",
+    "Hệ thống tổng hợp và phân tích chất lượng đánh giá sản phẩm trên sàn thương mại điện tử.",
 };
+
+const EXTENSION_ERROR_GUARD = `
+(function () {
+  if (typeof window === "undefined") return;
+  function isExtensionError(msg, stack, filename) {
+    var s = String(msg || "") + " " + String(stack || "") + " " + String(filename || "");
+    return (
+      s.indexOf("chrome-extension://") !== -1 ||
+      s.indexOf("moz-extension://") !== -1 ||
+      s.indexOf("M_ID") !== -1 ||
+      s.indexOf("eppiocemhmnlbhjplcgkofciiegomcon") !== -1
+    );
+  }
+  window.addEventListener(
+    "error",
+    function (event) {
+      var err = event && event.error;
+      if (
+        isExtensionError(
+          event && event.message,
+          err && err.stack,
+          event && event.filename
+        )
+      ) {
+        event.stopImmediatePropagation();
+        event.preventDefault();
+        return false;
+      }
+    },
+    true
+  );
+  window.addEventListener(
+    "unhandledrejection",
+    function (event) {
+      var reason = event && event.reason;
+      if (
+        isExtensionError(
+          reason && reason.message,
+          reason && reason.stack,
+          ""
+        )
+      ) {
+        event.stopImmediatePropagation();
+        event.preventDefault();
+        return false;
+      }
+    },
+    true
+  );
+})();
+`;
 
 export default function RootLayout({
   children,
@@ -21,8 +72,16 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="vi" className={beVietnamPro.variable}>
-      <body className="min-h-screen bg-bgpage font-sans text-gray-900">
+    <html lang="vi" className={beVietnamPro.variable} suppressHydrationWarning>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{ __html: EXTENSION_ERROR_GUARD }}
+        />
+      </head>
+      <body
+        className="min-h-screen bg-bgpage font-sans text-gray-900"
+        suppressHydrationWarning
+      >
         {children}
       </body>
     </html>

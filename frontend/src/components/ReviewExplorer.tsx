@@ -13,6 +13,7 @@ import {
   ThumbsUp,
   CornerDownRight,
   Video,
+  Camera,
   X,
 } from "lucide-react";
 import { ReviewItem } from "@/types/trustlens";
@@ -32,14 +33,20 @@ type FilterMode =
   | "burst"
   | "duplicate"
   | "coin";
-type SortMode = "suspicious" | "newest" | "lowest_star";
+
+type SortMode =
+  | "newest"
+  | "most_detailed"
+  | "has_media"
+  | "lowest_star"
+  | "highest_star"
+  | "suspicious";
 
 function toPct(val: number): number {
   if (!val || Number.isNaN(val)) return 0;
   return val > 1.0 ? val : val * 100.0;
 }
 
-// Generate concrete seeding reason chips from real Shopee review data
 function getShortReasonChips(review: ReviewItem): string[] {
   if (review.seeding_signals && review.seeding_signals.length > 0) {
     return review.seeding_signals.slice(0, 3);
@@ -72,7 +79,7 @@ function getShortReasonChips(review: ReviewItem): string[] {
     review.seeding_type === "COIN_FARM_SPAM" ||
     review.seeding_type === "coin_farming"
   ) {
-    chips.push("Bình luận nhận xu Shopee");
+    chips.push("Bình luận nhận xu");
   }
   if (
     review.graph_degree >= 15 ||
@@ -86,7 +93,6 @@ function getShortReasonChips(review: ReviewItem): string[] {
   return chips.slice(0, 3);
 }
 
-// Generate concrete authenticity chips for verified Real Buyer reviews
 function getAuthenticityChips(review: ReviewItem): string[] {
   const probPct = toPct(review.seeding_probability);
   if (review.is_seeding || probPct >= 45) return [];
@@ -131,7 +137,6 @@ function getAuthenticityChips(review: ReviewItem): string[] {
   return chips.slice(0, 3);
 }
 
-// Highlight matching search query in review text (B.10)
 function renderHighlightedText(text: string, keyword: string) {
   const cleanQuery = keyword.trim();
   if (!cleanQuery) return text;
@@ -155,7 +160,7 @@ function renderHighlightedText(text: string, keyword: string) {
 export default function ReviewExplorer({ reviews }: ReviewExplorerProps) {
   const [filter, setFilter] = useState<FilterMode>("all");
   const [starFilter, setStarFilter] = useState<number | null>(null);
-  const [sortBy, setSortBy] = useState<SortMode>("suspicious");
+  const [sortBy, setSortBy] = useState<SortMode>("most_detailed");
   const [search, setSearch] = useState("");
   const [visibleCount, setVisibleCount] = useState(12);
   const [expandedTextIds, setExpandedTextIds] = useState<
@@ -170,6 +175,43 @@ export default function ReviewExplorer({ reviews }: ReviewExplorerProps) {
     cover?: string;
     review: ReviewItem;
   } | null>(null);
+
+  // Extract gallery items from verified authentic buyer reviews
+  const buyerGalleryItems = useMemo(() => {
+    const items: Array<{
+      type: "image" | "video";
+      url: string;
+      cover?: string;
+      review: ReviewItem;
+    }> = [];
+
+    for (const r of reviews) {
+      if (r.is_seeding) continue;
+      if (r.media_videos) {
+        for (const vid of r.media_videos) {
+          if (!vid.template_video && (vid.url || vid.cover)) {
+            items.push({
+              type: "video",
+              url: vid.url || vid.cover,
+              cover: vid.cover,
+              review: r,
+            });
+          }
+        }
+      }
+      if (r.media_images) {
+        for (const imgUrl of r.media_images) {
+          items.push({
+            type: "image",
+            url: imgUrl,
+            review: r,
+          });
+        }
+      }
+      if (items.length >= 16) break;
+    }
+    return items.slice(0, 14);
+  }, [reviews]);
 
   const counts = useMemo(
     () => ({
@@ -272,6 +314,27 @@ export default function ReviewExplorer({ reviews }: ReviewExplorerProps) {
     });
 
     return [...list].sort((a, b) => {
+      if (sortBy === "most_detailed") {
+        const scoreA =
+          (a.is_seeding ? 0 : 100) +
+          Math.min(80, a.comment.length / 4) +
+          ((a.media_images?.length || 0) * 15) +
+          (a.is_repeated_purchase ? 25 : 0);
+        const scoreB =
+          (b.is_seeding ? 0 : 100) +
+          Math.min(80, b.comment.length / 4) +
+          ((b.media_images?.length || 0) * 15) +
+          (b.is_repeated_purchase ? 25 : 0);
+        return scoreB - scoreA;
+      }
+      if (sortBy === "has_media") {
+        const mA =
+          (a.media_images?.length || 0) + (a.media_videos?.length || 0) * 2;
+        const mB =
+          (b.media_images?.length || 0) + (b.media_videos?.length || 0) * 2;
+        if (mB !== mA) return mB - mA;
+        return b.timestamp.localeCompare(a.timestamp);
+      }
       if (sortBy === "suspicious") {
         return b.seeding_probability - a.seeding_probability;
       }
@@ -280,6 +343,9 @@ export default function ReviewExplorer({ reviews }: ReviewExplorerProps) {
       }
       if (sortBy === "lowest_star") {
         return a.rating - b.rating;
+      }
+      if (sortBy === "highest_star") {
+        return b.rating - a.rating;
       }
       return 0;
     });
@@ -297,8 +363,8 @@ export default function ReviewExplorer({ reviews }: ReviewExplorerProps) {
 
   const filterTabs = [
     { id: "all", label: `Tất cả (${counts.all})` },
-    { id: "organic", label: `Đánh giá thật (${counts.organic})` },
-    { id: "seeding", label: `Nghi seeding (${counts.seeding})` },
+    { id: "organic", label: `Hợp lệ (${counts.organic})` },
+    { id: "seeding", label: `Nghi vấn (${counts.seeding})` },
     ...(counts.repeat > 0
       ? [{ id: "repeat", label: `Khách mua lại (${counts.repeat})` }]
       : []),
@@ -309,14 +375,14 @@ export default function ReviewExplorer({ reviews }: ReviewExplorerProps) {
     ...(counts.targetItem > 0 && counts.targetItem < counts.all
       ? [{ id: "target_item", label: `Đúng SP này (${counts.targetItem})` }]
       : []),
-    { id: "coin", label: `Cày xu (${counts.coin})` },
+    { id: "coin", label: `Nhận xu (${counts.coin})` },
     { id: "duplicate", label: `Trùng mẫu (${counts.duplicate})` },
     { id: "burst", label: `Dồn đơn (${counts.burst})` },
   ];
 
   return (
     <div className="rounded-3xl border border-gray-200 bg-white p-5 shadow-xs sm:p-6">
-      {/* Header + 1-time Color Legend at top of block */}
+      {/* Header + Single Color Legend */}
       <div className="flex flex-col justify-between gap-3 border-b border-gray-100 pb-4 sm:flex-row sm:items-center">
         <div>
           <h3 className="text-lg font-extrabold text-gray-900">
@@ -327,15 +393,14 @@ export default function ReviewExplorer({ reviews }: ReviewExplorerProps) {
           </p>
         </div>
 
-        {/* Single Color Legend */}
         <div className="flex flex-wrap items-center gap-3.5 rounded-xl bg-gray-50 px-3.5 py-2 text-xs font-bold">
           <span className="inline-flex items-center gap-1.5 text-[#16A34A]">
             <span className="h-2.5 w-2.5 rounded-full bg-[#16A34A]" />
-            Thật
+            Hợp lệ
           </span>
           <span className="inline-flex items-center gap-1.5 text-[#DC2626]">
             <span className="h-2.5 w-2.5 rounded-full bg-[#DC2626]" />
-            Nghi seeding
+            Nghi vấn
           </span>
           <span className="inline-flex items-center gap-1.5 text-[#D97706]">
             <span className="h-2.5 w-2.5 rounded-full bg-[#F59E0B]" />
@@ -343,6 +408,48 @@ export default function ReviewExplorer({ reviews }: ReviewExplorerProps) {
           </span>
         </div>
       </div>
+
+      {/* Buyer Media Gallery Strip */}
+      {buyerGalleryItems.length > 0 && (
+        <div className="mt-4 rounded-2xl border border-gray-100 bg-gray-50/70 p-3.5">
+          <div className="mb-2.5 flex items-center justify-between">
+            <span className="inline-flex items-center gap-1.5 text-xs font-extrabold text-gray-800">
+              <Camera className="h-4 w-4 text-[#0D5CB6]" />
+              Thư viện hình ảnh &amp; video từ người mua thật ({buyerGalleryItems.length})
+            </span>
+            <span className="text-[11px] font-semibold text-gray-500">
+              Bấm vào ảnh để phóng to và xem bình luận
+            </span>
+          </div>
+          <div className="flex items-center gap-2 overflow-x-auto pb-1">
+            {buyerGalleryItems.map((item, idx) => (
+              <button
+                key={idx}
+                type="button"
+                onClick={() => setLightboxMedia(item)}
+                className="group relative h-16 w-16 shrink-0 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xs"
+                title={`${item.review.user_name} (${item.review.rating}★): ${item.review.comment.slice(0, 80)}`}
+              >
+                <img
+                  src={item.type === "video" ? item.cover || item.url : item.url}
+                  alt="Ảnh thực tế"
+                  width={64}
+                  height={64}
+                  className="h-16 w-16 object-cover transition group-hover:scale-105"
+                />
+                {item.type === "video" && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/30">
+                    <Video className="h-4 w-4 text-white" />
+                  </div>
+                )}
+                <span className="absolute bottom-1 right-1 rounded bg-black/70 px-1 text-[9px] font-bold text-amber-300">
+                  {item.review.rating}★
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Sticky Filter + Star Filter + Search + Sort Bar */}
       <div className="sticky top-14 z-20 -mx-2 my-4 space-y-2.5 rounded-2xl border border-gray-200 bg-white/95 p-3 shadow-xs backdrop-blur-xs">
@@ -404,9 +511,12 @@ export default function ReviewExplorer({ reviews }: ReviewExplorerProps) {
                 className="rounded-xl border border-gray-200 bg-gray-50 py-2 pl-8 pr-3 text-xs font-bold text-gray-700 focus:border-[#1A73E8] focus:bg-white focus:outline-none"
                 aria-label="Sắp xếp bình luận"
               >
-                <option value="suspicious">Sắp xếp: Nghi vấn nhất</option>
+                <option value="most_detailed">Sắp xếp: Chi tiết &amp; Thực tế nhất</option>
                 <option value="newest">Sắp xếp: Mới nhất</option>
+                <option value="has_media">Sắp xếp: Có hình ảnh / video</option>
                 <option value="lowest_star">Sắp xếp: Sao thấp → cao</option>
+                <option value="highest_star">Sắp xếp: Sao cao → thấp</option>
+                <option value="suspicious">Sắp xếp: Nghi vấn cao nhất</option>
               </select>
             </div>
           </div>
@@ -458,7 +568,7 @@ export default function ReviewExplorer({ reviews }: ReviewExplorerProps) {
         </div>
       </div>
 
-      {/* Review Cards with Full Real Shopee Details */}
+      {/* Review Cards */}
       <div className="space-y-3.5">
         {visibleReviews.map((review) => {
           const probPct = toPct(review.seeding_probability);
@@ -469,7 +579,7 @@ export default function ReviewExplorer({ reviews }: ReviewExplorerProps) {
 
           const statusConfig = isSeeding
             ? {
-                badgeText: "Nghi seeding",
+                badgeText: "Đánh giá nghi vấn",
                 badgeClass:
                   "border-[#DC2626]/25 bg-[#DC2626]/10 text-[#DC2626]",
                 cardClass: "border-gray-200 bg-red-50/20",
@@ -486,7 +596,7 @@ export default function ReviewExplorer({ reviews }: ReviewExplorerProps) {
                 Icon: AlertTriangle,
               }
             : {
-                badgeText: "Thật",
+                badgeText: "Đánh giá hợp lệ",
                 badgeClass:
                   "border-[#16A34A]/25 bg-[#16A34A]/10 text-[#16A34A]",
                 cardClass: "border-gray-200 bg-white",
@@ -517,6 +627,8 @@ export default function ReviewExplorer({ reviews }: ReviewExplorerProps) {
                     <img
                       src={review.user_avatar}
                       alt={review.user_name}
+                      width={36}
+                      height={36}
                       className="h-9 w-9 shrink-0 rounded-full border border-gray-200 object-cover"
                     />
                   ) : (
@@ -534,7 +646,7 @@ export default function ReviewExplorer({ reviews }: ReviewExplorerProps) {
                       {review.is_repeated_purchase && (
                         <span
                           className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-extrabold text-emerald-700"
-                          title="Dữ liệu thật Shopee: Tài khoản này đã mua lại sản phẩm từ lần thứ 2 trở lên"
+                          title="Tài khoản này đã mua lại sản phẩm từ lần thứ 2 trở lên"
                         >
                           ✓ Khách mua lại
                         </span>
@@ -542,7 +654,7 @@ export default function ReviewExplorer({ reviews }: ReviewExplorerProps) {
                       {review.anonymous && (
                         <span
                           className="inline-flex items-center rounded-md border border-gray-200 bg-gray-100 px-1.5 py-0.5 text-[10px] font-semibold text-gray-600"
-                          title="Người mua bật chế độ đánh giá ẩn danh trên Shopee"
+                          title="Người mua bật chế độ đánh giá ẩn danh"
                         >
                           Ẩn danh
                         </span>
@@ -592,14 +704,14 @@ export default function ReviewExplorer({ reviews }: ReviewExplorerProps) {
                   </div>
                 </div>
 
-                {/* Status Badge (Thật / Nghi seeding / Cần xem lại) + 5-Model Consensus */}
+                {/* Status Badge + 5-Model Consensus */}
                 <div className="flex flex-wrap items-center gap-1.5">
                   {review.models_flagged_count !== undefined && (
                     <button
                       type="button"
                       onClick={() => toggleExpandChip(review.review_id)}
                       className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-bold text-slate-700 transition hover:bg-slate-100"
-                      title="Bấm để xem kết quả biểu quyết từ cả 5 mô hình AI"
+                      title="Bấm để xem kết quả biểu quyết từ cả 5 mô hình"
                     >
                       <span>
                         {review.is_seeding
@@ -617,7 +729,7 @@ export default function ReviewExplorer({ reviews }: ReviewExplorerProps) {
                 </div>
               </div>
 
-              {/* Real Shopee Template Tags & Low Rating Reasons */}
+              {/* Template Tags & Low Rating Reasons */}
               {((review.template_tags && review.template_tags.length > 0) ||
                 (review.low_rating_reasons &&
                   review.low_rating_reasons.length > 0)) && (
@@ -641,7 +753,7 @@ export default function ReviewExplorer({ reviews }: ReviewExplorerProps) {
                 </div>
               )}
 
-              {/* Content: max 3 lines + "Xem thêm" button + keyword highlight */}
+              {/* Content */}
               <div className="mt-3">
                 <p
                   className={`text-sm leading-relaxed text-gray-800 ${
@@ -661,7 +773,7 @@ export default function ReviewExplorer({ reviews }: ReviewExplorerProps) {
                 )}
               </div>
 
-              {/* Real Shopee 3-Criteria Detailed Sub-Ratings */}
+              {/* 3-Criteria Detailed Sub-Ratings */}
               {review.detailed_rating &&
                 (review.detailed_rating.product_quality ||
                   review.detailed_rating.seller_service ||
@@ -694,7 +806,7 @@ export default function ReviewExplorer({ reviews }: ReviewExplorerProps) {
                   </div>
                 )}
 
-              {/* Real Buyer Photos & Videos Scraped from Shopee */}
+              {/* Real Buyer Photos & Videos */}
               {((review.media_images && review.media_images.length > 0) ||
                 (review.media_videos && review.media_videos.length > 0)) && (
                 <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -728,7 +840,9 @@ export default function ReviewExplorer({ reviews }: ReviewExplorerProps) {
                           <img
                             src={vid.cover}
                             alt="Video review"
-                            className="h-full w-full object-cover opacity-85 transition group-hover:scale-105"
+                            width={64}
+                            height={64}
+                            className="h-16 w-16 object-cover opacity-85 transition group-hover:scale-105"
                           />
                         )}
                         <div className="absolute inset-0 flex items-center justify-center bg-black/30">
@@ -765,14 +879,16 @@ export default function ReviewExplorer({ reviews }: ReviewExplorerProps) {
                       <img
                         src={imgUrl}
                         alt={`Ảnh review ${imgIdx + 1}`}
-                        className="h-full w-full object-cover transition hover:scale-105"
+                        width={64}
+                        height={64}
+                        className="h-16 w-16 object-cover transition hover:scale-105"
                       />
                     </button>
                   ))}
                 </div>
               )}
 
-              {/* Seller Reply from Shopee */}
+              {/* Seller Reply */}
               {review.seller_reply && (
                 <div className="mt-3 flex items-start gap-2 rounded-xl border border-gray-200 bg-gray-50 p-3 text-xs text-gray-700">
                   <CornerDownRight className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#FF6B35]" />
@@ -785,7 +901,7 @@ export default function ReviewExplorer({ reviews }: ReviewExplorerProps) {
                 </div>
               )}
 
-              {/* Concrete Real-Data Chips for both Suspicious AND Verified Real Reviews */}
+              {/* Concrete Real-Data Chips */}
               {(shortChips.length > 0 || authChips.length > 0) && (
                 <div className="mt-3">
                   <div className="flex flex-wrap items-center gap-2">
@@ -795,7 +911,7 @@ export default function ReviewExplorer({ reviews }: ReviewExplorerProps) {
                         type="button"
                         onClick={() => toggleExpandChip(review.review_id)}
                         className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-white px-2.5 py-1 text-xs font-bold text-[#DC2626] transition hover:bg-red-50"
-                        title="Bấm để xem số liệu kiểm chứng thực tế của bình luận này"
+                        title="Bấm để xem số liệu kiểm chứng của bình luận này"
                       >
                         <span>⚠ {chipText}</span>
                         {isChipExpanded ? (
@@ -812,7 +928,7 @@ export default function ReviewExplorer({ reviews }: ReviewExplorerProps) {
                         type="button"
                         onClick={() => toggleExpandChip(review.review_id)}
                         className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50/70 px-2.5 py-1 text-xs font-bold text-emerald-800 transition hover:bg-emerald-100"
-                        title="Bấm để xem số liệu xác thực từ Shopee của bình luận này"
+                        title="Bấm để xem số liệu xác thực của bình luận này"
                       >
                         <span>✓ {chipText}</span>
                         {isChipExpanded ? (
@@ -827,7 +943,7 @@ export default function ReviewExplorer({ reviews }: ReviewExplorerProps) {
                   {isChipExpanded && (
                     <div className="mt-2.5 rounded-xl border border-gray-200 bg-white p-3 text-xs text-gray-700 shadow-2xs">
                       <div className="font-extrabold text-gray-900">
-                        Số liệu kiểm chứng thực tế từ Shopee của đánh giá này:
+                        Số liệu kiểm chứng thực tế của đánh giá này:
                       </div>
                       <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
                         <div className="flex items-center justify-between rounded-lg bg-gray-50 px-2.5 py-1.5">
@@ -1004,7 +1120,7 @@ export default function ReviewExplorer({ reviews }: ReviewExplorerProps) {
                         : "bg-emerald-100 text-[#16A34A]"
                     }`}
                   >
-                    {lightboxMedia.review.is_seeding ? "Nghi vấn" : "Đánh giá thật"}
+                    {lightboxMedia.review.is_seeding ? "Nghi vấn" : "Đánh giá hợp lệ"}
                   </span>
                 </div>
 

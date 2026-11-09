@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import time
 from typing import Any, Dict, List, Tuple
 
@@ -21,7 +22,15 @@ import numpy as np
 import pandas as pd
 import shap
 
-from app.ml.feature_engine import FEATURE_LABELS_VI, FeatureEngine
+from app.ml.feature_engine import (
+    CHAR_REPEAT_REGEX,
+    COIN_FARM_PATTERNS,
+    FEATURE_LABELS_VI,
+    NEGATIVE_COMPLAINT_PATTERNS,
+    PREMATURE_PRAISE_PATTERNS,
+    WORD_REPEAT_REGEX,
+    FeatureEngine,
+)
 from app.ml.train_benchmark import train_and_save_all
 
 
@@ -131,6 +140,44 @@ class TrustLensPredictor:
         per_review_model_votes: List[Dict[str, float]] = []
         per_review_flagged_count: List[int] = []
 
+        # Detect cross-user duplicate media URLs across the product's reviews
+        media_url_users: Dict[str, set] = {}
+        for i in range(len(df)):
+            row_m = df.iloc[i]
+            uid_m = str(row_m.get("user_id", f"u_{i}"))
+            imgs_m = row_m.get("media_images")
+            if isinstance(imgs_m, list):
+                for u_img in imgs_m:
+                    if u_img:
+                        media_url_users.setdefault(str(u_img), set()).add(uid_m)
+            vids_m = row_m.get("media_videos")
+            if isinstance(vids_m, list):
+                for v_obj in vids_m:
+                    if isinstance(v_obj, dict):
+                        v_url = str(v_obj.get("url") or v_obj.get("cover") or "")
+                        if v_url:
+                            media_url_users.setdefault(v_url, set()).add(uid_m)
+
+        duplicate_media_flags: List[bool] = []
+        for i in range(len(df)):
+            row_m = df.iloc[i]
+            has_dup_m = False
+            imgs_m = row_m.get("media_images")
+            if isinstance(imgs_m, list):
+                for u_img in imgs_m:
+                    if u_img and len(media_url_users.get(str(u_img), set())) >= 2:
+                        has_dup_m = True
+                        break
+            vids_m = row_m.get("media_videos")
+            if not has_dup_m and isinstance(vids_m, list):
+                for v_obj in vids_m:
+                    if isinstance(v_obj, dict):
+                        v_url = str(v_obj.get("url") or v_obj.get("cover") or "")
+                        if v_url and len(media_url_users.get(v_url, set())) >= 2:
+                            has_dup_m = True
+                            break
+            duplicate_media_flags.append(has_dup_m)
+
         for i in range(len(df)):
             f_row = X_feat.iloc[i]
             row_i = df.iloc[i]
@@ -139,10 +186,29 @@ class TrustLensPredictor:
             has_media_i = int(row_i.get("has_media", 0))
             is_auto_note = comment_i.startswith("[Đánh giá ")
             is_repeat_buyer = bool(row_i.get("is_repeated_purchase", False))
+            has_dup_media_i = duplicate_media_flags[i]
+
+            clean_comment_i = "" if is_auto_note else FeatureEngine._clean_comment_for_similarity(comment_i)
+            has_premature_praise = (
+                not is_auto_note
+                and FeatureEngine._count_regex_matches(clean_comment_i, PREMATURE_PRAISE_PATTERNS) >= 1
+            )
+            has_explicit_coin = (
+                not is_auto_note
+                and FeatureEngine._count_regex_matches(clean_comment_i, COIN_FARM_PATTERNS) >= 1
+            )
+            has_char_word_rep = (
+                not is_auto_note
+                and bool(CHAR_REPEAT_REGEX.search(clean_comment_i) or WORD_REPEAT_REGEX.search(clean_comment_i))
+            )
+            has_neg_complaint = (
+                not is_auto_note
+                and FeatureEngine._count_regex_matches(clean_comment_i, NEGATIVE_COMPLAINT_PATTERNS) >= 1
+            )
 
             tpl_tags_i = row_i.get("template_tags")
             tpl_tags_list = tpl_tags_i if isinstance(tpl_tags_i, list) else []
-            word_cnt_i = int(f_row.get("nlp_word_count", 0))
+            word_cnt_i = int(f_row.get("nlp_word_count", len(clean_comment_i.split())))
             raw_free_cnt = row_i.get("free_text_word_count")
             free_words_i = (
                 int(raw_free_cnt)
@@ -182,12 +248,20 @@ class TrustLensPredictor:
             nuance_sc = float(f_row.get("nlp_authentic_nuance_score", 0))
 
             bonus = 0.0
-            if coin_sc >= 1.0:
+            if has_explicit_coin or coin_sc >= 1.0:
                 bonus = max(bonus, 0.92)
+            if has_premature_praise and r_star_i >= 4:
+                bonus = max(bonus, 0.88)
+            if has_char_word_rep and r_star_i == 5 and nuance_sc == 0:
+                bonus = max(bonus, 0.82)
+            if has_dup_media_i and r_star_i == 5:
+                bonus = max(bonus, 0.86)
             if (has_template_vid or has_short_coin_vid) and r_star_i == 5 and (coin_sc >= 1.0 or free_words_i >= 10):
                 bonus = max(bonus, 0.85)
             if subrating_mismatch:
-                bonus = max(bonus, 0.76)
+                bonus = max(bonus, 0.78)
+            if has_neg_complaint and r_star_i == 5 and nuance_sc == 0:
+                bonus = max(bonus, 0.75)
             if ai_sc >= 1.0:
                 bonus = max(bonus, 0.84)
             if hype_sc >= 1.0 and r_star_i == 5:
@@ -346,6 +420,7 @@ class TrustLensPredictor:
                 low_reasons = []
 
             comment_str = str(row["comment"])
+            comment_lower = comment_str.lower()
             is_text_rev = bool(
                 row.get("is_text_review", not comment_str.startswith("[Đánh giá "))
             )
@@ -361,7 +436,27 @@ class TrustLensPredictor:
             word_cnt = int(f_row.get("nlp_word_count", 0))
             det_rating = row.get("detailed_rating") if isinstance(row.get("detailed_rating"), dict) else None
 
-            # Build 100% real-data concrete Authenticity Signals vs Seeding Signals
+            free_text_str = comment_lower
+            for t in tpl_tags:
+                t_l = str(t).lower().strip()
+                if t_l:
+                    free_text_str = free_text_str.replace(t_l, "")
+            free_text_words = len([
+                w for w in free_text_str.replace(":", " ").replace("\n", " ").split()
+                if len(w) > 1
+            ])
+
+            has_premature = any(re.search(p, comment_lower) for p in PREMATURE_PRAISE_PATTERNS)
+            has_explicit_coin = any(re.search(p, comment_lower) for p in COIN_FARM_PATTERNS)
+            has_char_word_rep = bool(
+                CHAR_REPEAT_REGEX.search(comment_lower) or WORD_REPEAT_REGEX.search(comment_lower)
+            )
+            has_neg_in_5star = (r_star_val == 5) and any(
+                re.search(p, comment_lower) for p in NEGATIVE_COMPLAINT_PATTERNS
+            )
+            has_dup_media = bool(duplicate_media_flags[i])
+
+            # Build detailed, full-sentence Authenticity Signals vs Seeding Signals
             authenticity_signals: List[str] = []
             seeding_signals: List[str] = []
 
@@ -383,41 +478,93 @@ class TrustLensPredictor:
             ]
 
             if is_seed or prob >= 0.45:
-                if coin_score >= 1.0:
-                    seeding_signals.append("Bình luận nhận xu Shopee")
-                if cos_sim_pct >= 50.0 and is_text_rev:
-                    seeding_signals.append("Nội dung trùng lặp tương tự")
+                if has_explicit_coin:
+                    seeding_signals.append(
+                        "Nội dung thừa nhận viết bình luận chỉ để nhận xu thưởng Shopee (spam kiếm xu)"
+                    )
+                if has_premature:
+                    seeding_signals.append(
+                        "Đánh giá 5 sao sớm khi chưa mở hộp hoặc chưa sử dụng thực tế sản phẩm"
+                    )
+                if has_char_word_rep:
+                    seeding_signals.append(
+                        "Cố tình lặp ký tự hoặc lặp từ liên tiếp để kéo dài đủ số ký tự nhận xu"
+                    )
+                if has_dup_media:
+                    seeding_signals.append(
+                        "Tái sử dụng trùng lặp đường dẫn ảnh/video với tài khoản khác trên cùng sản phẩm"
+                    )
                 if short_or_tpl_vids:
-                    seeding_signals.append("Video ngắn / video mẫu")
+                    vid_ms = int(short_or_tpl_vids[0].get("duration_ms") or 0)
+                    vid_sec_str = f" ({round(vid_ms / 1000, 1)}s)" if vid_ms > 0 else ""
+                    seeding_signals.append(
+                        f"Đính kèm video thời lượng rất ngắn{vid_sec_str} hoặc video mẫu quay cảnh không liên quan"
+                    )
+                if cos_sim_pct >= 50.0 and is_text_rev:
+                    seeding_signals.append(
+                        f"Văn phong trùng lặp cao (tương đồng ngữ nghĩa TF-IDF {cos_sim_pct}% với bình luận khác)"
+                    )
                 if burst_cnt >= 4 and r_star_val == 5:
-                    seeding_signals.append(f"Đăng dồn {burst_cnt} đơn/15p")
+                    seeding_signals.append(
+                        f"Bất thường thời gian: Đăng dồn {burst_cnt} đánh giá 5 sao liên tiếp trong khung 15 phút"
+                    )
                 if user_freq_val >= 2 and r_star_val == 5:
-                    seeding_signals.append(f"Tài khoản lặp {user_freq_val} lần tại shop")
+                    seeding_signals.append(
+                        f"Tài khoản lặp lại {user_freq_val} lần đánh giá 5 sao tại cùng gian hàng"
+                    )
                 if det_rating and r_star_val == 5 and int(det_rating.get("product_quality") or 5) <= 3:
                     seeding_signals.append(
-                        f"Lệch điểm (5★ nhưng Chất lượng {det_rating.get('product_quality')}★)"
+                        f"Mâu thuẫn điểm số: Chấm tổng 5 sao nhưng điểm thành phần Chất lượng sản phẩm chỉ {det_rating.get('product_quality')} sao"
+                    )
+                if has_neg_in_5star:
+                    seeding_signals.append(
+                        "Mâu thuẫn nội dung: Chấm 5 sao tuyệt đối nhưng lời bình luận lại phàn nàn lỗi sản phẩm"
                     )
                 if not seeding_signals:
-                    seeding_signals.append("Nhận xét khen chung chung")
+                    seeding_signals.append(
+                        f"Nhận xét khen chung chung ({word_cnt} từ), thiếu chi tiết kiểm chứng trải nghiệm thực tế"
+                    )
             else:
                 if is_repeat_val:
-                    authenticity_signals.append("Khách mua lại lần 2+")
+                    authenticity_signals.append(
+                        "Khách hàng quay lại mua lần thứ 2 trở lên tại gian hàng (Repeated Purchase)"
+                    )
                 if len(media_imgs) > 0 and len(real_vid_secs) > 0:
                     authenticity_signals.append(
-                        f"Có {len(media_imgs)} ảnh & video ({real_vid_secs[0]}s)"
+                        f"Cung cấp bằng chứng thực tế gồm {len(media_imgs)} ảnh chụp và video quay trực tiếp ({real_vid_secs[0]} giây)"
                     )
                 elif len(real_vid_secs) > 0:
-                    authenticity_signals.append(f"Có video quay sản phẩm ({real_vid_secs[0]}s)")
+                    authenticity_signals.append(
+                        f"Đính kèm video quay sản phẩm thực tế có độ dài {real_vid_secs[0]} giây"
+                    )
                 elif len(media_imgs) > 0:
-                    authenticity_signals.append(f"Đính kèm {len(media_imgs)} hình ảnh")
-                if r_star_val <= 4 and (low_reasons or is_text_rev):
-                    authenticity_signals.append("Phản hồi khách quan từ người mua")
-                elif nuance_score >= 1.0 or (is_text_rev and word_cnt >= 16 and cos_sim_pct < 38):
-                    authenticity_signals.append("Mô tả trải nghiệm chi tiết")
+                    authenticity_signals.append(
+                        f"Đính kèm {len(media_imgs)} hình ảnh chụp sản phẩm thực tế sau khi nhận hàng"
+                    )
+                if r_star_val <= 4 and low_reasons:
+                    authenticity_signals.append(
+                        f"Phản hồi khách quan từ người mua thực ({r_star_val} sao), nêu rõ điểm cần lưu ý: {', '.join(str(x) for x in low_reasons)}"
+                    )
+                elif r_star_val <= 4 and is_text_rev:
+                    authenticity_signals.append(
+                        f"Đánh giá {r_star_val} sao có nhận xét phản biện cụ thể về ưu/nhược điểm sau khi dùng"
+                    )
+                elif nuance_score >= 1.0 or (is_text_rev and free_text_words >= 12 and cos_sim_pct < 42):
+                    authenticity_signals.append(
+                        f"Mô tả chi tiết trải nghiệm sử dụng thực tế ({word_cnt} từ, độ tương đồng thấp {cos_sim_pct}%)"
+                    )
+                elif not is_text_rev and r_star_val == 5:
+                    authenticity_signals.append(
+                        "Đánh giá 5 sao xác nhận giao dịch thành công (không phát hiện dấu hiệu spam xu hay trùng lặp)"
+                    )
+                if variation_val:
+                    authenticity_signals.append(
+                        f"Xác nhận đúng phân loại hàng đã đặt: {variation_val}"
+                    )
                 if helpful_val > 0:
-                    authenticity_signals.append(f"{helpful_val} người thấy hữu ích")
-                if variation_val and len(authenticity_signals) < 2:
-                    authenticity_signals.append("Có thông tin phân loại hàng")
+                    authenticity_signals.append(
+                        f"Được {helpful_val} người mua khác nhấn bình chọn Hữu ích trên Shopee"
+                    )
 
             enriched_reviews.append({
                 "review_id": rev_id,

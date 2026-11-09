@@ -47,27 +47,53 @@ COIN_FARM_PATTERNS = [
     r"chỉ mang tính chất",
     r"hình ảnh mang tính chất",
     r"video mang tính chất",
+    r"ảnh không liên quan",
+    r"video không liên quan",
+    r"hình không liên quan",
+    r"đăng đại lấy xu",
+    r"comment lấy xu",
+    r"cmt lấy xu",
+    r"đánh giá lấy xu",
+    r"review lấy xu",
     r"đủ 50 ký tự",
     r"đủ 200 ký tự",
     r"đủ ký tự",
     r"nhận 200 xu",
     r"nhận 100 xu",
     r"200 xu",
+    r"100 xu",
+    r"kiếm chút xu",
     r"lấy xu",
     r"kiếm xu",
     r"nhận xu",
     r"cày xu",
+    r"xin ít xu",
     r"công cha như núi thái sơn",
     r"trăm năm trong cõi người ta",
     r"cách nấu thịt kho tàu",
-    r"chưa dùng nên chưa biết",
-    r"chưa mở ra xem",
     r"quý khách đã đăng ký",
     r"gói cước gia hạn",
     r"soạn huy gửi",
     r"viettel\.vn",
     r"tv360\.vn",
 ]
+
+PREMATURE_PRAISE_PATTERNS = [
+    r"chưa dùng nên chưa biết",
+    r"chưa xài nên chưa biết",
+    r"chưa thử nên chưa biết",
+    r"chưa mở ra xem",
+    r"chưa khui hàng",
+    r"chưa bóc tem",
+    r"mới nhận hàng chưa dùng",
+    r"mới nhận chưa thử",
+    r"cho tạm 5 sao",
+    r"tạm cho 5 sao",
+    r"chưa sử dụng nhưng cứ cho 5 sao",
+]
+
+CHAR_REPEAT_REGEX = re.compile(r"(.)\1{4,}", re.IGNORECASE)
+WORD_REPEAT_REGEX = re.compile(r"\b(\w+)(?:\s+\1){2,}\b", re.IGNORECASE)
 
 SHOPEE_FORM_HEADER_REGEX = re.compile(
     r"(?i)(chất lượng sản phẩm|đúng với mô tả|kinh nghiệm sử dụng|tính năng nổi bật|"
@@ -94,6 +120,9 @@ AUTHENTIC_DETAIL_PATTERNS = [
     r"móp góc",
     r"dùng thử",
     r"đã dùng được",
+    r"dùng sang hũ thứ",
+    r"mua lần 2",
+    r"mua lại lần",
     r"tầm giá",
     r"ổn áp",
     r"tạm ổn",
@@ -105,6 +134,9 @@ AUTHENTIC_DETAIL_PATTERNS = [
     r"chính hãng",
     r"mềm môi",
     r"cấp ẩm",
+    r"không bị khô",
+    r"không kích ứng",
+    r"đóng gói chống sốc",
 ]
 
 NEGATIVE_COMPLAINT_PATTERNS = [
@@ -118,6 +150,12 @@ NEGATIVE_COMPLAINT_PATTERNS = [
     r"lừa đảo",
     r"phí tiền",
     r"chậm",
+    r"giao sai",
+    r"thiếu hàng",
+    r"móp méo",
+    r"hàng giả",
+    r"kích ứng",
+    r"nổi mụn",
 ]
 
 FEATURE_LABELS_VI: Dict[str, str] = {
@@ -255,23 +293,28 @@ class FeatureEngine:
 
             hype = 0 if is_auto_placeholder else self._count_regex_matches(clean_txt, SEEDING_HYPE_PATTERNS)
             coin = 0 if is_auto_placeholder else self._count_regex_matches(clean_txt, COIN_FARM_PATTERNS)
+            premature = 0 if is_auto_placeholder else self._count_regex_matches(clean_txt, PREMATURE_PRAISE_PATTERNS)
+            has_char_rep = 0 if is_auto_placeholder else (1 if CHAR_REPEAT_REGEX.search(clean_txt) else 0)
+            has_word_rep = 0 if is_auto_placeholder else (1 if WORD_REPEAT_REGEX.search(clean_txt) else 0)
             ai_f = 0 if is_auto_placeholder else self._count_regex_matches(clean_txt, AI_TEMPLATE_PATTERNS)
             nuance = 1 if is_auto_placeholder else self._count_regex_matches(clean_txt, AUTHENTIC_DETAIL_PATTERNS)
             neg_c = 0 if is_auto_placeholder else self._count_regex_matches(clean_txt, NEGATIVE_COMPLAINT_PATTERNS)
 
             hype_scores[i] = hype
-            coin_scores[i] = coin
+            coin_scores[i] = coin + premature + (0.8 if (has_char_rep or has_word_rep) else 0.0)
             ai_scores[i] = ai_f
             auth_nuance[i] = nuance
             char_entropy[i] = 3.85 if is_auto_placeholder else self._shannon_char_entropy(clean_txt)
             sent_burstiness[i] = 0.32 if is_auto_placeholder else self._clause_burstiness(clean_txt)
 
-            # Sentiment-rating mismatch: 5-star review with coin-farm / complaint or extreme hype without nuance
+            # Sentiment-rating mismatch: 5-star review with coin-farm / premature praise / complaint or extreme hype without nuance
             star_norm = (ratings[i] - 1.0) / 4.0  # [0, 1]
-            if coin >= 1 and ratings[i] >= 5.0:
-                sent_mismatch[i] = 0.90
+            if (coin >= 1 or premature >= 1) and ratings[i] >= 4.0:
+                sent_mismatch[i] = 0.92
             elif neg_c >= 1 and ratings[i] >= 5.0:
-                sent_mismatch[i] = 0.85
+                sent_mismatch[i] = 0.88
+            elif (has_char_rep or has_word_rep) and ratings[i] >= 5.0:
+                sent_mismatch[i] = 0.78
             elif (hype + ai_f) >= 2 and nuance == 0 and ratings[i] >= 5.0:
                 sent_mismatch[i] = 0.65
             else:

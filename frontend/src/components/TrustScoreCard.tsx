@@ -1,22 +1,20 @@
 "use client";
 
-import React, { useState } from "react";
+import React from "react";
 import {
   CheckCircle2,
   AlertTriangle,
   ShieldAlert,
   Star,
-  Share2,
-  Bookmark,
   ExternalLink,
   Clock,
   Copy,
   Coins,
-  Check,
   Store,
   Image as ImageIcon,
-  Layers,
   Repeat,
+  FileWarning,
+  ShieldCheck,
 } from "lucide-react";
 import {
   TrustMetrics,
@@ -30,9 +28,6 @@ interface TrustScoreCardProps {
   metrics: TrustMetrics;
   reviews: ReviewItem[];
   burstTimeline?: BurstTimelinePoint[];
-  isSaved?: boolean;
-  onToggleSave?: () => void;
-  onSelectShopProduct?: (productUrl: string) => void;
 }
 
 const FALLBACK_IMAGE =
@@ -43,18 +38,13 @@ export default function TrustScoreCard({
   metrics,
   reviews,
   burstTimeline = [],
-  isSaved = false,
-  onToggleSave,
-  onSelectShopProduct,
 }: TrustScoreCardProps) {
-  const [copiedLink, setCopiedLink] = useState(false);
-
   const score = metrics.trust_score;
   const verdict =
     score >= 70
       ? {
-          label: "NÊN MUA",
-          subLabel: "Đánh giá tự nhiên cao",
+          label: "NÊN MUA — ĐỘ TIN CẬY TỐT",
+          subLabel: metrics.verdict || "Đa số đánh giá đến từ người mua thực tế, phân bố tự nhiên.",
           bg: "from-emerald-50/70 via-emerald-50/20 to-white",
           badgeBg: "bg-[#16A34A]",
           textColor: "text-[#16A34A]",
@@ -63,8 +53,8 @@ export default function TrustScoreCard({
         }
       : score >= 45
       ? {
-          label: "CÂN NHẮC",
-          subLabel: "Có một số bình luận nhận xu / trùng lặp",
+          label: "CÂN NHẮC — CÓ DẤU HIỆU SPAM XU / SEEDING",
+          subLabel: metrics.verdict || "Phát hiện một số bình luận nhận xu hoặc trùng lặp nội dung.",
           bg: "from-amber-50/70 via-amber-50/20 to-white",
           badgeBg: "bg-[#F59E0B]",
           textColor: "text-[#D97706]",
@@ -72,8 +62,8 @@ export default function TrustScoreCard({
           Icon: AlertTriangle,
         }
       : {
-          label: "NÊN TRÁNH",
-          subLabel: "Tỷ lệ đánh giá bất thường cao",
+          label: "CẢNH BÁO — TỶ LỆ ĐÁNH GIÁ BẤT THƯỜNG CAO",
+          subLabel: metrics.verdict || "Tỷ lệ bình luận seeding hoặc cày xu cao, điểm thực tế chênh lệch lớn.",
           bg: "from-red-50/70 via-red-50/20 to-white",
           badgeBg: "bg-[#DC2626]",
           textColor: "text-[#DC2626]",
@@ -105,7 +95,7 @@ export default function TrustScoreCard({
 
   const burstCount =
     metrics.archetype_breakdown["TIME_BURST_SEEDING"] ??
-    reviews.filter((r) => r.seeding_type === "TIME_BURST_SEEDING").length;
+    reviews.filter((r) => r.seeding_type === "TIME_BURST_SEEDING" || r.burst_15m_count >= 4).length;
 
   const duplicateCount =
     (metrics.archetype_breakdown["TEMPLATE_COPY_PASTE"] || 0) +
@@ -115,6 +105,17 @@ export default function TrustScoreCard({
   const coinCount =
     metrics.archetype_breakdown["COIN_FARM_SPAM"] ??
     reviews.filter((r) => r.seeding_type === "COIN_FARM_SPAM").length;
+
+  const mismatchOrShortVidCount = reviews.filter((r) => {
+    const det = r.detailed_rating;
+    const subMismatch = det && r.rating === 5 && (det.product_quality || 5) <= 3;
+    const hasShortOrTplVid =
+      r.media_videos &&
+      r.media_videos.some(
+        (v) => v.template_video || (v.duration_ms && v.duration_ms > 0 && v.duration_ms <= 2600)
+      );
+    return Boolean(subMismatch || hasShortOrTplVid);
+  }).length;
 
   const maxHourlyOrders =
     burstTimeline.length > 0
@@ -133,6 +134,13 @@ export default function TrustScoreCard({
         (r.media_images && r.media_images.length > 0) ||
         (r.media_videos && r.media_videos.length > 0)
     ).length;
+
+  const authenticMediaCount = reviews.filter(
+    (r) =>
+      !r.is_seeding &&
+      ((r.media_images && r.media_images.length > 0) ||
+        (r.media_videos && r.media_videos.length > 0))
+  ).length;
 
   const authenticPct = Math.max(
     0,
@@ -158,6 +166,7 @@ export default function TrustScoreCard({
         star,
         shownCount: estShown,
         realCount: estReal,
+        suspiciousCount: Math.max(0, estShown - estReal),
       };
     }
 
@@ -165,6 +174,7 @@ export default function TrustScoreCard({
       star,
       shownCount: matching.length,
       realCount: organicMatching.length,
+      suspiciousCount: Math.max(0, matching.length - organicMatching.length),
     };
   });
   const maxStarCount = Math.max(
@@ -172,147 +182,79 @@ export default function TrustScoreCard({
     1
   );
 
-  const handleCopyShare = () => {
-    const shareText = `${product.name} — ${verdict.label} (${Math.round(score)}/100) • Điểm thực tế: ${metrics.adjusted_rating.toFixed(2)}★`;
-    if (navigator.clipboard) {
-      navigator.clipboard.writeText(shareText);
-      setCopiedLink(true);
-      setTimeout(() => setCopiedLink(false), 2000);
-    }
-  };
-
   return (
     <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xs">
-      {/* 1. COMPACT PRODUCT HEADER */}
+      {/* 1. FULL PRODUCT HEADER (NO TRUNCATION) */}
       <div className="border-b border-gray-100 p-4 sm:p-5">
-        <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
-          <div className="flex items-center gap-3.5">
-            <img
-              src={productImage}
-              alt={product.name}
-              width={80}
-              height={80}
-              className="h-18 w-18 shrink-0 rounded-2xl border border-gray-200 object-cover sm:h-20 sm:w-20"
-              onError={(e) => {
-                (e.currentTarget as HTMLImageElement).src = FALLBACK_IMAGE;
-              }}
-            />
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+          <img
+            src={productImage}
+            alt={product.name}
+            width={88}
+            height={88}
+            className="h-20 w-20 shrink-0 rounded-2xl border border-gray-200 object-cover sm:h-22 sm:w-22"
+            onError={(e) => {
+              (e.currentTarget as HTMLImageElement).src = FALLBACK_IMAGE;
+            }}
+          />
 
-            <div className="min-w-0 space-y-1">
-              <div className="flex flex-wrap items-center gap-2 text-xs">
-                <span className="inline-flex items-center gap-1 rounded-md bg-gray-100 px-2 py-0.5 font-bold text-gray-700">
-                  <Store className="h-3 w-3 text-[#1A73E8]" />
-                  <span className="truncate">{displayShopName}</span>
+          <div className="min-w-0 flex-1 space-y-1.5">
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <span className="inline-flex items-center gap-1.5 rounded-md bg-gray-100 px-2.5 py-1 font-bold text-gray-800">
+                <Store className="h-3.5 w-3.5 text-[#1A73E8]" />
+                <span>Gian hàng: {displayShopName}</span>
+              </span>
+              {meta?.is_official_shop && (
+                <span className="rounded bg-[#D0011B] px-2 py-0.5 text-[11px] font-extrabold text-white">
+                  Shopee Mall Chính Hãng
                 </span>
-                {meta?.is_official_shop && (
-                  <span className="rounded bg-[#D0011B] px-1.5 py-0.5 text-[10px] font-extrabold text-white">
-                    Mall
-                  </span>
-                )}
-                {product.url && (
-                  <a
-                    href={product.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-1 font-bold text-[#0D5CB6] hover:underline"
-                  >
-                    <span>Mở trên Shopee</span>
-                    <ExternalLink className="h-3 w-3" />
-                  </a>
-                )}
-              </div>
+              )}
+              {product.url && (
+                <a
+                  href={product.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1 font-bold text-[#0D5CB6] hover:underline"
+                >
+                  <span>Liên kết gốc trên Shopee</span>
+                  <ExternalLink className="h-3 w-3" />
+                </a>
+              )}
+            </div>
 
-              <h2 className="line-clamp-2 text-base font-extrabold text-gray-900 sm:text-lg">
-                {product.name}
-              </h2>
+            <h2 className="text-base font-extrabold leading-snug text-gray-900 sm:text-lg">
+              {product.name}
+            </h2>
 
-              <div className="flex flex-wrap items-center gap-3 text-xs font-semibold text-gray-500">
-                {displayPrice && (
-                  <span className="text-sm font-black text-[#EE4D2D]">
-                    {displayPrice}
-                  </span>
-                )}
-                <span>{metrics.total_reviews_analyzed} đánh giá</span>
-                {mediaReviewsCount > 0 && (
-                  <span className="inline-flex items-center gap-1 text-[#0D5CB6]">
-                    <ImageIcon className="h-3.5 w-3.5" />
-                    {mediaReviewsCount} ảnh/video
-                  </span>
-                )}
-              </div>
+            <div className="flex flex-wrap items-center gap-3 text-xs font-semibold text-gray-600">
+              {displayPrice && (
+                <span className="text-base font-black text-[#EE4D2D]">
+                  Giá niêm yết: {displayPrice}
+                </span>
+              )}
+              <span>
+                • Tổng mẫu phân tích:{" "}
+                <strong className="text-gray-900">
+                  {metrics.total_reviews_analyzed} đánh giá
+                </strong>
+              </span>
+              {mediaReviewsCount > 0 && (
+                <span className="inline-flex items-center gap-1 text-[#0D5CB6]">
+                  • <ImageIcon className="h-3.5 w-3.5" />
+                  {mediaReviewsCount} đánh giá đính kèm ảnh/video
+                </span>
+              )}
+              {meta?.total_raw_ratings_scanned !== undefined && meta.total_raw_ratings_scanned > 0 && (
+                <span>
+                  • Tổng lượt đánh giá quét từ sàn:{" "}
+                  <strong className="text-gray-900">
+                    {meta.total_raw_ratings_scanned.toLocaleString("vi-VN")}
+                  </strong>
+                </span>
+              )}
             </div>
           </div>
-
-          {/* Actions */}
-          <div className="flex items-center gap-2 shrink-0">
-            <button
-              type="button"
-              onClick={handleCopyShare}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-bold text-gray-700 hover:bg-gray-100"
-            >
-              {copiedLink ? (
-                <>
-                  <Check className="h-3.5 w-3.5 text-[#16A34A]" />
-                  <span className="text-[#16A34A]">Đã chép</span>
-                </>
-              ) : (
-                <>
-                  <Share2 className="h-3.5 w-3.5 text-[#1A73E8]" />
-                  <span>Chia sẻ</span>
-                </>
-              )}
-            </button>
-
-            {onToggleSave && (
-              <button
-                type="button"
-                onClick={onToggleSave}
-                className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-bold transition ${
-                  isSaved
-                    ? "border-[#1A73E8] bg-blue-50 text-[#0D5CB6]"
-                    : "border-gray-200 bg-gray-50 text-gray-700 hover:bg-gray-100"
-                }`}
-              >
-                <Bookmark
-                  className={`h-3.5 w-3.5 ${
-                    isSaved ? "fill-[#0D5CB6] text-[#0D5CB6]" : "text-gray-500"
-                  }`}
-                />
-                <span>{isSaved ? "Đã lưu" : "Lưu"}</span>
-              </button>
-            )}
-          </div>
         </div>
-
-        {/* Shop Product Switcher (Compact) */}
-        {meta?.shop_top_products && meta.shop_top_products.length > 1 && (
-          <div className="mt-3 flex items-center gap-2 overflow-x-auto pt-1">
-            <span className="inline-flex shrink-0 items-center gap-1 text-[11px] font-bold text-gray-400">
-              <Layers className="h-3 w-3" />
-              Cùng shop:
-            </span>
-            {meta.shop_top_products.slice(0, 6).map((sp) => {
-              const isCurrent = String(meta.itemid || "") === String(sp.itemid);
-              const itemUrl = `https://shopee.vn/product/${meta.shopid}/${sp.itemid}`;
-              return (
-                <button
-                  key={sp.itemid}
-                  type="button"
-                  onClick={() =>
-                    onSelectShopProduct && onSelectShopProduct(itemUrl)
-                  }
-                  className={`flex shrink-0 items-center gap-1.5 rounded-lg border px-2 py-1 text-left text-[11px] font-bold transition ${
-                    isCurrent
-                      ? "border-[#1A73E8] bg-blue-50 text-[#0D5CB6]"
-                      : "border-gray-200 bg-gray-50/70 text-gray-600 hover:bg-gray-100"
-                  }`}
-                >
-                  <span className="max-w-[140px] truncate">{sp.name}</span>
-                </button>
-              );
-            })}
-          </div>
-        )}
       </div>
 
       {/* 2. VERDICT + RATINGS + STAR BARS */}
@@ -321,10 +263,10 @@ export default function TrustScoreCard({
         <div
           className={`flex flex-col justify-between bg-gradient-to-br p-4 sm:p-5 lg:col-span-7 ${verdict.bg}`}
         >
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
+          <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+            <div className="flex items-start gap-3">
               <div
-                className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-white ${verdict.badgeBg}`}
+                className={`mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-white ${verdict.badgeBg}`}
               >
                 <VerdictIcon className="h-5 w-5" />
               </div>
@@ -334,14 +276,14 @@ export default function TrustScoreCard({
                 >
                   {verdict.label}
                 </span>
-                <p className="mt-1 text-xs font-semibold text-gray-600">
+                <p className="mt-1.5 text-xs leading-relaxed font-semibold text-gray-700">
                   {verdict.subLabel}
                 </p>
               </div>
             </div>
 
-            {/* Compact Score Circle */}
-            <div className="flex items-center gap-2.5 rounded-2xl border border-gray-200/70 bg-white px-3 py-1.5">
+            {/* Score Circle */}
+            <div className="flex shrink-0 items-center gap-2.5 self-start rounded-2xl border border-gray-200/70 bg-white px-3 py-1.5 sm:self-center">
               <div className="relative h-14 w-14 shrink-0">
                 <svg
                   width={56}
@@ -377,7 +319,7 @@ export default function TrustScoreCard({
               </div>
               <div className="pr-1">
                 <div className="text-[10px] font-bold text-gray-400">
-                  Độ tin cậy
+                  Chỉ số Tin cậy
                 </div>
                 <div className="text-xs font-extrabold text-gray-800">
                   / 100 điểm
@@ -387,51 +329,56 @@ export default function TrustScoreCard({
           </div>
 
           {/* 2 Big Rating Boxes */}
-          <div className="mt-4 grid grid-cols-2 gap-3">
+          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="rounded-xl border border-gray-200/80 bg-white p-3.5">
               <div className="text-xs font-bold text-gray-500">
-                Điểm hiển thị
+                Điểm hiển thị trên sàn Shopee
               </div>
-              <div className="mt-1 flex items-baseline gap-1">
+              <div className="mt-1 flex items-baseline gap-1.5">
                 <span className="text-2xl font-black text-gray-900 sm:text-3xl">
                   {metrics.platform_rating.toFixed(2)}
                 </span>
                 <Star className="h-4 w-4 fill-[#F59E0B] text-[#F59E0B]" />
+                <span className="text-xs font-semibold text-gray-400">
+                  / 5.00
+                </span>
               </div>
             </div>
 
             <div className="rounded-xl border border-emerald-300 bg-white p-3.5">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-extrabold text-[#16A34A]">
-                  Điểm thực tế
+                  Điểm thực tế sau khi lọc nhiễu
                 </span>
                 {metrics.rating_inflation > 0.03 && (
                   <span className="rounded bg-red-50 px-1.5 py-0.5 text-[10px] font-extrabold text-[#DC2626]">
-                    -{metrics.rating_inflation.toFixed(2)}★
+                    Độ lệch: -{metrics.rating_inflation.toFixed(2)}★
                   </span>
                 )}
               </div>
-              <div className="mt-1 flex items-baseline gap-1">
+              <div className="mt-1 flex items-baseline gap-1.5">
                 <span className="text-2xl font-black text-[#16A34A] sm:text-3xl">
                   {metrics.adjusted_rating.toFixed(2)}
                 </span>
                 <Star className="h-4 w-4 fill-[#16A34A] text-[#16A34A]" />
+                <span className="text-xs font-semibold text-gray-400">
+                  / 5.00
+                </span>
               </div>
             </div>
           </div>
 
           {/* Valid vs Suspicious Bar */}
           <div className="mt-3.5 rounded-xl border border-gray-200/60 bg-white px-3.5 py-2.5">
-            <div className="mb-1.5 flex items-center justify-between text-xs font-bold">
+            <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2 text-xs font-bold">
               <span className="text-[#16A34A]">
-                Hợp lệ: {metrics.authentic_reviews_count} ({authenticPct}%)
+                Đánh giá hợp lệ (Người mua thật): {metrics.authentic_reviews_count} đánh giá ({authenticPct}%)
               </span>
               <span className="text-[#DC2626]">
-                Nghi vấn: {metrics.seeding_reviews_count} (
-                {Math.round(metrics.seeding_rate_pct)}%)
+                Đánh giá nghi vấn (Seeding / Spam xu): {metrics.seeding_reviews_count} đánh giá ({Math.round(metrics.seeding_rate_pct)}%)
               </span>
             </div>
-            <div className="flex h-2 w-full overflow-hidden rounded-full bg-red-100">
+            <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-red-100">
               <div
                 className="h-full bg-[#16A34A]"
                 style={{ width: `${authenticPct}%` }}
@@ -440,20 +387,20 @@ export default function TrustScoreCard({
           </div>
         </div>
 
-        {/* Right: Clean Star Bars */}
+        {/* Right: Detailed Star Bars */}
         <div className="flex flex-col justify-center p-4 sm:p-5 lg:col-span-5">
           <div className="mb-3 flex items-center justify-between">
-            <h3 className="text-xs font-extrabold uppercase tracking-wide text-gray-500">
-              Phân bố mức sao
+            <h3 className="text-xs font-extrabold uppercase tracking-wide text-gray-600">
+              Phân bố mức sao (Thực tế / Tổng hiển thị)
             </h3>
             <div className="flex items-center gap-2.5 text-[11px] font-bold">
-              <span className="inline-flex items-center gap-1 text-gray-400">
-                <span className="h-2 w-2 rounded-full bg-gray-300" />
-                Gốc
-              </span>
               <span className="inline-flex items-center gap-1 text-[#16A34A]">
                 <span className="h-2 w-2 rounded-full bg-[#16A34A]" />
-                Thực tế
+                Hợp lệ
+              </span>
+              <span className="inline-flex items-center gap-1 text-[#DC2626]">
+                <span className="h-2 w-2 rounded-full bg-[#DC2626]" />
+                Nghi vấn
               </span>
             </div>
           </div>
@@ -463,28 +410,35 @@ export default function TrustScoreCard({
               const shownPct = Math.round((row.shownCount / maxStarCount) * 100);
               const realPct = Math.round((row.realCount / maxStarCount) * 100);
               return (
-                <div key={row.star} className="flex items-center gap-2.5 text-xs">
-                  <span className="w-7 shrink-0 font-extrabold text-gray-700">
-                    {row.star}★
-                  </span>
-                  <div className="flex-1 space-y-1">
-                    <div className="h-2 w-full overflow-hidden rounded-full bg-gray-100">
+                <div key={row.star} className="space-y-1 text-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="font-extrabold text-gray-800">
+                      Mức {row.star} sao ({row.star}★)
+                    </span>
+                    <span className="font-bold text-gray-700">
+                      <strong className="text-[#16A34A]">
+                        {row.realCount} hợp lệ
+                      </strong>{" "}
+                      / {row.shownCount} tổng{" "}
+                      {row.suspiciousCount > 0 && (
+                        <span className="text-[#DC2626]">
+                          ({row.suspiciousCount} nghi vấn)
+                        </span>
+                      )}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="relative h-2.5 flex-1 overflow-hidden rounded-full bg-gray-100">
                       <div
-                        className="h-full rounded-full bg-gray-300"
+                        className="absolute inset-y-0 left-0 rounded-full bg-red-200"
                         style={{ width: `${shownPct}%` }}
                       />
-                    </div>
-                    <div className="h-2 w-full overflow-hidden rounded-full bg-gray-100">
                       <div
-                        className="h-full rounded-full bg-[#16A34A]"
+                        className="absolute inset-y-0 left-0 rounded-full bg-[#16A34A]"
                         style={{ width: `${realPct}%` }}
                       />
                     </div>
                   </div>
-                  <span className="w-16 shrink-0 text-right font-bold text-gray-700">
-                    <strong className="text-[#16A34A]">{row.realCount}</strong>
-                    <span className="text-gray-400">/{row.shownCount}</span>
-                  </span>
                 </div>
               );
             })}
@@ -492,46 +446,71 @@ export default function TrustScoreCard({
         </div>
       </div>
 
-      {/* 3. COMPACT 4-STAT STRIP */}
-      <div className="grid grid-cols-2 gap-2.5 border-t border-gray-100 bg-gray-50/60 p-3.5 sm:grid-cols-4 sm:px-5">
-        <div className="flex items-center justify-between rounded-xl border border-gray-200/70 bg-white px-3 py-2">
-          <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-gray-600">
-            <Clock className="h-3.5 w-3.5 text-[#DC2626]" />
-            Đơn/giờ cao nhất
-          </span>
-          <strong className="text-xs font-black text-gray-900">
-            {maxHourlyOrders}
-          </strong>
+      {/* 3. DETAILED 6-CATEGORY DIAGNOSTIC BREAKDOWN */}
+      <div className="border-t border-gray-100 bg-gray-50/60 p-4 sm:px-5">
+        <div className="mb-2.5 text-xs font-extrabold uppercase tracking-wide text-gray-600">
+          Thống kê chi tiết các nhóm dấu hiệu nhận diện trên sản phẩm
         </div>
+        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="flex items-center justify-between rounded-xl border border-gray-200/80 bg-white px-3.5 py-2.5">
+            <span className="inline-flex items-center gap-2 text-xs font-bold text-gray-700">
+              <Coins className="h-4 w-4 shrink-0 text-[#EA580C]" />
+              <span>Bình luận kiếm xu / khen sớm chưa dùng</span>
+            </span>
+            <strong className="ml-2 text-sm font-black text-[#EA580C]">
+              {coinCount}
+            </strong>
+          </div>
 
-        <div className="flex items-center justify-between rounded-xl border border-gray-200/70 bg-white px-3 py-2">
-          <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-gray-600">
-            <Copy className="h-3.5 w-3.5 text-[#D97706]" />
-            Trùng nội dung
-          </span>
-          <strong className="text-xs font-black text-[#D97706]">
-            {duplicateCount}
-          </strong>
-        </div>
+          <div className="flex items-center justify-between rounded-xl border border-gray-200/80 bg-white px-3.5 py-2.5">
+            <span className="inline-flex items-center gap-2 text-xs font-bold text-gray-700">
+              <Copy className="h-4 w-4 shrink-0 text-[#D97706]" />
+              <span>Nội dung văn mẫu / trùng lặp ngữ nghĩa</span>
+            </span>
+            <strong className="ml-2 text-sm font-black text-[#D97706]">
+              {duplicateCount}
+            </strong>
+          </div>
 
-        <div className="flex items-center justify-between rounded-xl border border-gray-200/70 bg-white px-3 py-2">
-          <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-gray-600">
-            <Coins className="h-3.5 w-3.5 text-[#EA580C]" />
-            Bình luận nhận xu
-          </span>
-          <strong className="text-xs font-black text-[#EA580C]">
-            {coinCount}
-          </strong>
-        </div>
+          <div className="flex items-center justify-between rounded-xl border border-gray-200/80 bg-white px-3.5 py-2.5">
+            <span className="inline-flex items-center gap-2 text-xs font-bold text-gray-700">
+              <Clock className="h-4 w-4 shrink-0 text-[#DC2626]" />
+              <span>Đăng dồn khung giờ (Đỉnh: {maxHourlyOrders} đơn/giờ)</span>
+            </span>
+            <strong className="ml-2 text-sm font-black text-[#DC2626]">
+              {burstCount}
+            </strong>
+          </div>
 
-        <div className="flex items-center justify-between rounded-xl border border-gray-200/70 bg-white px-3 py-2">
-          <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-gray-600">
-            <Repeat className="h-3.5 w-3.5 text-[#16A34A]" />
-            Khách mua lại
-          </span>
-          <strong className="text-xs font-black text-[#16A34A]">
-            {repeatBuyersCount}
-          </strong>
+          <div className="flex items-center justify-between rounded-xl border border-gray-200/80 bg-white px-3.5 py-2.5">
+            <span className="inline-flex items-center gap-2 text-xs font-bold text-gray-700">
+              <FileWarning className="h-4 w-4 shrink-0 text-rose-600" />
+              <span>Lệch điểm thành phần / video mẫu ngắn</span>
+            </span>
+            <strong className="ml-2 text-sm font-black text-rose-600">
+              {mismatchOrShortVidCount}
+            </strong>
+          </div>
+
+          <div className="flex items-center justify-between rounded-xl border border-gray-200/80 bg-white px-3.5 py-2.5">
+            <span className="inline-flex items-center gap-2 text-xs font-bold text-gray-700">
+              <ShieldCheck className="h-4 w-4 shrink-0 text-[#0D5CB6]" />
+              <span>Đánh giá thật có hình ảnh / video quay thực tế</span>
+            </span>
+            <strong className="ml-2 text-sm font-black text-[#0D5CB6]">
+              {authenticMediaCount}
+            </strong>
+          </div>
+
+          <div className="flex items-center justify-between rounded-xl border border-gray-200/80 bg-white px-3.5 py-2.5">
+            <span className="inline-flex items-center gap-2 text-xs font-bold text-gray-700">
+              <Repeat className="h-4 w-4 shrink-0 text-[#16A34A]" />
+              <span>Khách hàng mua lại lần 2+ (Repeated Buyer)</span>
+            </span>
+            <strong className="ml-2 text-sm font-black text-[#16A34A]">
+              {repeatBuyersCount}
+            </strong>
+          </div>
         </div>
       </div>
     </div>

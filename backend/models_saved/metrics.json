@@ -1,0 +1,1210 @@
+{
+  "dataset_summary": {
+    "total_reviews": 2430,
+    "train_samples": 1822,
+    "test_samples": 608,
+    "seeding_ratio_pct": 35.9,
+    "total_features": 39,
+    "nlp_features_count": 17,
+    "temporal_behavioral_count": 8,
+    "graph_gat_features_count": 14,
+    "cv_folds": 5,
+    "platforms_covered": [
+      "Shopee",
+      "TikTok Shop",
+      "Tiki",
+      "Google Maps",
+      "Lazada"
+    ]
+  },
+  "models": [
+    {
+      "id": "logreg_nlp",
+      "name": "Logistic Regression (TF-IDF + NLP Baseline)",
+      "short_name": "LogReg (NLP)",
+      "feature_set": "NLP Only (17 features)",
+      "is_proposed": false,
+      "latency_ms": 17.6,
+      "cv_5fold": {
+        "f1_mean": 87.3,
+        "f1_std": 1.81,
+        "roc_auc_mean": 95.71,
+        "roc_auc_std": 1.17,
+        "fold_f1_scores": [
+          85.96,
+          87.28,
+          85.14,
+          89.53,
+          88.57
+        ]
+      },
+      "paired_ttest": {
+        "t_stat": 9.11,
+        "p_value": 0.0004,
+        "p_value_str": "< 0.001",
+        "significant": true
+      },
+      "accuracy": 91.94,
+      "precision": 88.79,
+      "recall": 89.19,
+      "f1_score": 88.99,
+      "roc_auc": 95.8,
+      "pr_auc": 93.63,
+      "mcc": 82.63,
+      "brier_score": 0.0676,
+      "optimal_threshold": 0.5,
+      "confusion_matrix": {
+        "tn": 361,
+        "fp": 25,
+        "fn": 24,
+        "tp": 198
+      },
+      "roc_curve": [
+        {
+          "x": 0.0,
+          "y": 9.46
+        },
+        {
+          "x": 5.0,
+          "y": 87.39
+        },
+        {
+          "x": 10.0,
+          "y": 91.44
+        },
+        {
+          "x": 15.0,
+          "y": 92.34
+        },
+        {
+          "x": 20.0,
+          "y": 93.69
+        },
+        {
+          "x": 25.0,
+          "y": 96.4
+        },
+        {
+          "x": 30.0,
+          "y": 96.85
+        },
+        {
+          "x": 35.0,
+          "y": 96.85
+        },
+        {
+          "x": 40.0,
+          "y": 97.75
+        },
+        {
+          "x": 45.0,
+          "y": 98.2
+        },
+        {
+          "x": 50.0,
+          "y": 98.2
+        },
+        {
+          "x": 55.0,
+          "y": 98.65
+        },
+        {
+          "x": 60.0,
+          "y": 98.65
+        },
+        {
+          "x": 65.0,
+          "y": 99.1
+        },
+        {
+          "x": 70.0,
+          "y": 99.1
+        },
+        {
+          "x": 75.0,
+          "y": 99.1
+        },
+        {
+          "x": 80.0,
+          "y": 99.1
+        },
+        {
+          "x": 85.0,
+          "y": 99.55
+        },
+        {
+          "x": 90.0,
+          "y": 99.55
+        },
+        {
+          "x": 95.0,
+          "y": 99.55
+        },
+        {
+          "x": 100.0,
+          "y": 100.0
+        }
+      ],
+      "pr_curve": [
+        {
+          "x": 0.0,
+          "y": 100.0
+        },
+        {
+          "x": 5.0,
+          "y": 100.0
+        },
+        {
+          "x": 10.0,
+          "y": 95.69
+        },
+        {
+          "x": 15.0,
+          "y": 97.08
+        },
+        {
+          "x": 20.0,
+          "y": 97.8
+        },
+        {
+          "x": 25.0,
+          "y": 98.23
+        },
+        {
+          "x": 30.0,
+          "y": 98.52
+        },
+        {
+          "x": 35.0,
+          "y": 96.28
+        },
+        {
+          "x": 40.0,
+          "y": 96.73
+        },
+        {
+          "x": 45.0,
+          "y": 97.08
+        },
+        {
+          "x": 50.0,
+          "y": 97.37
+        },
+        {
+          "x": 55.0,
+          "y": 96.83
+        },
+        {
+          "x": 60.0,
+          "y": 96.38
+        },
+        {
+          "x": 65.0,
+          "y": 96.01
+        },
+        {
+          "x": 70.0,
+          "y": 96.28
+        },
+        {
+          "x": 75.0,
+          "y": 94.33
+        },
+        {
+          "x": 80.0,
+          "y": 93.67
+        },
+        {
+          "x": 85.0,
+          "y": 92.64
+        },
+        {
+          "x": 90.0,
+          "y": 87.33
+        },
+        {
+          "x": 95.0,
+          "y": 70.56
+        },
+        {
+          "x": 100.0,
+          "y": 36.51
+        }
+      ]
+    },
+    {
+      "id": "rf_nlp_temp",
+      "name": "Random Forest (NLP + Temporal Burstiness)",
+      "short_name": "Random Forest",
+      "feature_set": "NLP + Temporal (20 features)",
+      "is_proposed": false,
+      "latency_ms": 338.6,
+      "cv_5fold": {
+        "f1_mean": 89.81,
+        "f1_std": 1.08,
+        "roc_auc_mean": 96.51,
+        "roc_auc_std": 1.02,
+        "fold_f1_scores": [
+          91.02,
+          90.63,
+          88.69,
+          90.03,
+          88.69
+        ]
+      },
+      "paired_ttest": {
+        "t_stat": 12.97,
+        "p_value": 0.0001,
+        "p_value_str": "< 0.001",
+        "significant": true
+      },
+      "accuracy": 92.11,
+      "precision": 96.28,
+      "recall": 81.53,
+      "f1_score": 88.29,
+      "roc_auc": 97.42,
+      "pr_auc": 96.79,
+      "mcc": 83.05,
+      "brier_score": 0.0688,
+      "optimal_threshold": 0.5,
+      "confusion_matrix": {
+        "tn": 379,
+        "fp": 7,
+        "fn": 41,
+        "tp": 181
+      },
+      "roc_curve": [
+        {
+          "x": 0.0,
+          "y": 46.4
+        },
+        {
+          "x": 5.0,
+          "y": 89.64
+        },
+        {
+          "x": 10.0,
+          "y": 95.95
+        },
+        {
+          "x": 15.0,
+          "y": 95.95
+        },
+        {
+          "x": 20.0,
+          "y": 96.85
+        },
+        {
+          "x": 25.0,
+          "y": 97.3
+        },
+        {
+          "x": 30.0,
+          "y": 98.2
+        },
+        {
+          "x": 35.0,
+          "y": 98.2
+        },
+        {
+          "x": 40.0,
+          "y": 98.65
+        },
+        {
+          "x": 45.0,
+          "y": 98.65
+        },
+        {
+          "x": 50.0,
+          "y": 99.1
+        },
+        {
+          "x": 55.0,
+          "y": 99.1
+        },
+        {
+          "x": 60.0,
+          "y": 99.1
+        },
+        {
+          "x": 65.0,
+          "y": 99.1
+        },
+        {
+          "x": 70.0,
+          "y": 99.1
+        },
+        {
+          "x": 75.0,
+          "y": 99.1
+        },
+        {
+          "x": 80.0,
+          "y": 99.55
+        },
+        {
+          "x": 85.0,
+          "y": 99.55
+        },
+        {
+          "x": 90.0,
+          "y": 99.55
+        },
+        {
+          "x": 95.0,
+          "y": 99.55
+        },
+        {
+          "x": 100.0,
+          "y": 100.0
+        }
+      ],
+      "pr_curve": [
+        {
+          "x": 0.0,
+          "y": 100.0
+        },
+        {
+          "x": 5.0,
+          "y": 100.0
+        },
+        {
+          "x": 10.0,
+          "y": 100.0
+        },
+        {
+          "x": 15.0,
+          "y": 100.0
+        },
+        {
+          "x": 20.0,
+          "y": 100.0
+        },
+        {
+          "x": 25.0,
+          "y": 100.0
+        },
+        {
+          "x": 30.0,
+          "y": 100.0
+        },
+        {
+          "x": 35.0,
+          "y": 100.0
+        },
+        {
+          "x": 40.0,
+          "y": 100.0
+        },
+        {
+          "x": 45.0,
+          "y": 100.0
+        },
+        {
+          "x": 50.0,
+          "y": 99.11
+        },
+        {
+          "x": 55.0,
+          "y": 99.19
+        },
+        {
+          "x": 60.0,
+          "y": 99.25
+        },
+        {
+          "x": 65.0,
+          "y": 99.31
+        },
+        {
+          "x": 70.0,
+          "y": 99.36
+        },
+        {
+          "x": 75.0,
+          "y": 98.81
+        },
+        {
+          "x": 80.0,
+          "y": 97.8
+        },
+        {
+          "x": 85.0,
+          "y": 94.63
+        },
+        {
+          "x": 90.0,
+          "y": 90.49
+        },
+        {
+          "x": 95.0,
+          "y": 84.73
+        },
+        {
+          "x": 100.0,
+          "y": 36.51
+        }
+      ]
+    },
+    {
+      "id": "xgb_tabular",
+      "name": "XGBoost (NLP + Temporal + Account Tabular)",
+      "short_name": "XGBoost (Tabular)",
+      "feature_set": "NLP + Temporal + Behavioral (25 features)",
+      "is_proposed": false,
+      "latency_ms": 327.4,
+      "cv_5fold": {
+        "f1_mean": 94.36,
+        "f1_std": 1.82,
+        "roc_auc_mean": 97.18,
+        "roc_auc_std": 0.92,
+        "fold_f1_scores": [
+          95.07,
+          95.95,
+          91.38,
+          95.43,
+          93.98
+        ]
+      },
+      "paired_ttest": {
+        "t_stat": 2.25,
+        "p_value": 0.04405,
+        "p_value_str": "0.0440",
+        "significant": false
+      },
+      "accuracy": 95.39,
+      "precision": 94.91,
+      "recall": 92.34,
+      "f1_score": 93.61,
+      "roc_auc": 98.02,
+      "pr_auc": 97.74,
+      "mcc": 90.03,
+      "brier_score": 0.0378,
+      "optimal_threshold": 0.5,
+      "confusion_matrix": {
+        "tn": 375,
+        "fp": 11,
+        "fn": 17,
+        "tp": 205
+      },
+      "roc_curve": [
+        {
+          "x": 0.0,
+          "y": 55.41
+        },
+        {
+          "x": 5.0,
+          "y": 95.05
+        },
+        {
+          "x": 10.0,
+          "y": 96.4
+        },
+        {
+          "x": 15.0,
+          "y": 97.3
+        },
+        {
+          "x": 20.0,
+          "y": 97.3
+        },
+        {
+          "x": 25.0,
+          "y": 97.3
+        },
+        {
+          "x": 30.0,
+          "y": 97.3
+        },
+        {
+          "x": 35.0,
+          "y": 98.65
+        },
+        {
+          "x": 40.0,
+          "y": 98.65
+        },
+        {
+          "x": 45.0,
+          "y": 98.65
+        },
+        {
+          "x": 50.0,
+          "y": 98.65
+        },
+        {
+          "x": 55.0,
+          "y": 98.65
+        },
+        {
+          "x": 60.0,
+          "y": 99.1
+        },
+        {
+          "x": 65.0,
+          "y": 99.55
+        },
+        {
+          "x": 70.0,
+          "y": 99.55
+        },
+        {
+          "x": 75.0,
+          "y": 99.55
+        },
+        {
+          "x": 80.0,
+          "y": 99.55
+        },
+        {
+          "x": 85.0,
+          "y": 99.55
+        },
+        {
+          "x": 90.0,
+          "y": 99.55
+        },
+        {
+          "x": 95.0,
+          "y": 100.0
+        },
+        {
+          "x": 100.0,
+          "y": 100.0
+        }
+      ],
+      "pr_curve": [
+        {
+          "x": 0.0,
+          "y": 100.0
+        },
+        {
+          "x": 5.0,
+          "y": 100.0
+        },
+        {
+          "x": 10.0,
+          "y": 100.0
+        },
+        {
+          "x": 15.0,
+          "y": 100.0
+        },
+        {
+          "x": 20.0,
+          "y": 100.0
+        },
+        {
+          "x": 25.0,
+          "y": 100.0
+        },
+        {
+          "x": 30.0,
+          "y": 100.0
+        },
+        {
+          "x": 35.0,
+          "y": 100.0
+        },
+        {
+          "x": 40.0,
+          "y": 100.0
+        },
+        {
+          "x": 45.0,
+          "y": 100.0
+        },
+        {
+          "x": 50.0,
+          "y": 100.0
+        },
+        {
+          "x": 55.0,
+          "y": 100.0
+        },
+        {
+          "x": 60.0,
+          "y": 99.25
+        },
+        {
+          "x": 65.0,
+          "y": 99.31
+        },
+        {
+          "x": 70.0,
+          "y": 98.73
+        },
+        {
+          "x": 75.0,
+          "y": 98.81
+        },
+        {
+          "x": 80.0,
+          "y": 98.34
+        },
+        {
+          "x": 85.0,
+          "y": 98.08
+        },
+        {
+          "x": 90.0,
+          "y": 96.62
+        },
+        {
+          "x": 95.0,
+          "y": 90.32
+        },
+        {
+          "x": 100.0,
+          "y": 37.44
+        }
+      ]
+    },
+    {
+      "id": "lgbm_graph_gat",
+      "name": "LightGBM + Supervised GAT (Single Graph-GBDT)",
+      "short_name": "LightGBM + GAT",
+      "feature_set": "Full Features (39 features)",
+      "is_proposed": false,
+      "latency_ms": 121.0,
+      "cv_5fold": {
+        "f1_mean": 95.84,
+        "f1_std": 0.94,
+        "roc_auc_mean": 97.11,
+        "roc_auc_std": 0.59,
+        "fold_f1_scores": [
+          95.73,
+          97.42,
+          95.48,
+          95.7,
+          94.89
+        ]
+      },
+      "paired_ttest": {
+        "t_stat": 0.67,
+        "p_value": 0.26861,
+        "p_value_str": "0.2686",
+        "significant": false
+      },
+      "accuracy": 97.37,
+      "precision": 97.25,
+      "recall": 95.5,
+      "f1_score": 96.36,
+      "roc_auc": 97.53,
+      "pr_auc": 96.36,
+      "mcc": 94.31,
+      "brier_score": 0.0245,
+      "optimal_threshold": 0.5,
+      "confusion_matrix": {
+        "tn": 380,
+        "fp": 6,
+        "fn": 10,
+        "tp": 212
+      },
+      "roc_curve": [
+        {
+          "x": 0.0,
+          "y": 25.23
+        },
+        {
+          "x": 5.0,
+          "y": 96.4
+        },
+        {
+          "x": 10.0,
+          "y": 96.4
+        },
+        {
+          "x": 15.0,
+          "y": 96.4
+        },
+        {
+          "x": 20.0,
+          "y": 96.4
+        },
+        {
+          "x": 25.0,
+          "y": 96.85
+        },
+        {
+          "x": 30.0,
+          "y": 97.75
+        },
+        {
+          "x": 35.0,
+          "y": 97.75
+        },
+        {
+          "x": 40.0,
+          "y": 97.75
+        },
+        {
+          "x": 45.0,
+          "y": 98.2
+        },
+        {
+          "x": 50.0,
+          "y": 98.2
+        },
+        {
+          "x": 55.0,
+          "y": 98.2
+        },
+        {
+          "x": 60.0,
+          "y": 98.2
+        },
+        {
+          "x": 65.0,
+          "y": 99.1
+        },
+        {
+          "x": 70.0,
+          "y": 99.55
+        },
+        {
+          "x": 75.0,
+          "y": 100.0
+        },
+        {
+          "x": 80.0,
+          "y": 100.0
+        },
+        {
+          "x": 85.0,
+          "y": 100.0
+        },
+        {
+          "x": 90.0,
+          "y": 100.0
+        },
+        {
+          "x": 95.0,
+          "y": 100.0
+        },
+        {
+          "x": 100.0,
+          "y": 100.0
+        }
+      ],
+      "pr_curve": [
+        {
+          "x": 0.0,
+          "y": 100.0
+        },
+        {
+          "x": 5.0,
+          "y": 100.0
+        },
+        {
+          "x": 10.0,
+          "y": 100.0
+        },
+        {
+          "x": 15.0,
+          "y": 100.0
+        },
+        {
+          "x": 20.0,
+          "y": 100.0
+        },
+        {
+          "x": 25.0,
+          "y": 100.0
+        },
+        {
+          "x": 30.0,
+          "y": 97.08
+        },
+        {
+          "x": 35.0,
+          "y": 97.49
+        },
+        {
+          "x": 40.0,
+          "y": 97.8
+        },
+        {
+          "x": 45.0,
+          "y": 96.15
+        },
+        {
+          "x": 50.0,
+          "y": 96.52
+        },
+        {
+          "x": 55.0,
+          "y": 96.83
+        },
+        {
+          "x": 60.0,
+          "y": 97.08
+        },
+        {
+          "x": 65.0,
+          "y": 96.65
+        },
+        {
+          "x": 70.0,
+          "y": 96.88
+        },
+        {
+          "x": 75.0,
+          "y": 97.08
+        },
+        {
+          "x": 80.0,
+          "y": 97.26
+        },
+        {
+          "x": 85.0,
+          "y": 97.42
+        },
+        {
+          "x": 90.0,
+          "y": 97.56
+        },
+        {
+          "x": 95.0,
+          "y": 97.68
+        },
+        {
+          "x": 100.0,
+          "y": 37.44
+        }
+      ]
+    },
+    {
+      "id": "proposed_hybrid_graph_lgbm",
+      "name": "TrustLens Hybrid (Stacking LGBM+XGB+RF + Supervised GAT + Calibration)",
+      "short_name": "TrustLens Hybrid (Proposed)",
+      "feature_set": "NLP + Temporal + Behavioral + Supervised GAT (39 features)",
+      "is_proposed": true,
+      "latency_ms": 4814.4,
+      "cv_5fold": {
+        "f1_mean": 95.95,
+        "f1_std": 0.99,
+        "roc_auc_mean": 96.61,
+        "roc_auc_std": 0.77,
+        "fold_f1_scores": [
+          95.68,
+          97.71,
+          95.48,
+          95.4,
+          95.45
+        ]
+      },
+      "paired_ttest": {
+        "t_stat": 0.0,
+        "p_value": 0.0,
+        "p_value_str": "Baseline đối chiếu",
+        "significant": true
+      },
+      "accuracy": 97.7,
+      "precision": 97.71,
+      "recall": 95.95,
+      "f1_score": 96.82,
+      "roc_auc": 97.64,
+      "pr_auc": 95.96,
+      "mcc": 95.02,
+      "brier_score": 0.0226,
+      "optimal_threshold": 0.3,
+      "confusion_matrix": {
+        "tn": 381,
+        "fp": 5,
+        "fn": 9,
+        "tp": 213
+      },
+      "roc_curve": [
+        {
+          "x": 0.0,
+          "y": 4.05
+        },
+        {
+          "x": 5.0,
+          "y": 96.4
+        },
+        {
+          "x": 10.0,
+          "y": 96.4
+        },
+        {
+          "x": 15.0,
+          "y": 96.4
+        },
+        {
+          "x": 20.0,
+          "y": 97.3
+        },
+        {
+          "x": 25.0,
+          "y": 97.3
+        },
+        {
+          "x": 30.0,
+          "y": 97.3
+        },
+        {
+          "x": 35.0,
+          "y": 97.3
+        },
+        {
+          "x": 40.0,
+          "y": 98.2
+        },
+        {
+          "x": 45.0,
+          "y": 98.2
+        },
+        {
+          "x": 50.0,
+          "y": 98.65
+        },
+        {
+          "x": 55.0,
+          "y": 98.65
+        },
+        {
+          "x": 60.0,
+          "y": 98.65
+        },
+        {
+          "x": 65.0,
+          "y": 98.65
+        },
+        {
+          "x": 70.0,
+          "y": 99.1
+        },
+        {
+          "x": 75.0,
+          "y": 100.0
+        },
+        {
+          "x": 80.0,
+          "y": 100.0
+        },
+        {
+          "x": 85.0,
+          "y": 100.0
+        },
+        {
+          "x": 90.0,
+          "y": 100.0
+        },
+        {
+          "x": 95.0,
+          "y": 100.0
+        },
+        {
+          "x": 100.0,
+          "y": 100.0
+        }
+      ],
+      "pr_curve": [
+        {
+          "x": 0.0,
+          "y": 100.0
+        },
+        {
+          "x": 5.0,
+          "y": 91.73
+        },
+        {
+          "x": 10.0,
+          "y": 95.69
+        },
+        {
+          "x": 15.0,
+          "y": 97.08
+        },
+        {
+          "x": 20.0,
+          "y": 97.8
+        },
+        {
+          "x": 25.0,
+          "y": 98.23
+        },
+        {
+          "x": 30.0,
+          "y": 98.52
+        },
+        {
+          "x": 35.0,
+          "y": 97.49
+        },
+        {
+          "x": 40.0,
+          "y": 96.73
+        },
+        {
+          "x": 45.0,
+          "y": 97.08
+        },
+        {
+          "x": 50.0,
+          "y": 97.37
+        },
+        {
+          "x": 55.0,
+          "y": 97.6
+        },
+        {
+          "x": 60.0,
+          "y": 97.8
+        },
+        {
+          "x": 65.0,
+          "y": 97.96
+        },
+        {
+          "x": 70.0,
+          "y": 97.49
+        },
+        {
+          "x": 75.0,
+          "y": 97.08
+        },
+        {
+          "x": 80.0,
+          "y": 97.26
+        },
+        {
+          "x": 85.0,
+          "y": 97.42
+        },
+        {
+          "x": 90.0,
+          "y": 97.56
+        },
+        {
+          "x": 95.0,
+          "y": 97.68
+        },
+        {
+          "x": 100.0,
+          "y": 37.44
+        }
+      ]
+    }
+  ],
+  "ablation_study": [
+    {
+      "configuration": "1. Chỉ dùng NLP Tiếng Việt (TF-IDF + SVD + Entropy + Lexicon)",
+      "f1_score": 88.99,
+      "roc_auc": 95.8,
+      "gain_f1": 0.0
+    },
+    {
+      "configuration": "2. + Đặc trưng Đột biến Thời gian (Temporal Burstiness 15m & Z-Score)",
+      "f1_score": 88.29,
+      "roc_auc": 97.42,
+      "gain_f1": -0.7
+    },
+    {
+      "configuration": "3. + Hành vi Tài khoản (Account Velocity, Độ lệch Sao & Mua hàng)",
+      "f1_score": 93.61,
+      "roc_auc": 98.02,
+      "gain_f1": 4.62
+    },
+    {
+      "configuration": "4. + Đồ thị NetworkX (PageRank, K-Core, Louvain Q) & Supervised GAT",
+      "f1_score": 96.36,
+      "roc_auc": 97.53,
+      "gain_f1": 7.37
+    },
+    {
+      "configuration": "5. + Stacking Ensemble & Hiệu chuẩn Xác suất Isotonic (Full TrustLens)",
+      "f1_score": 96.82,
+      "roc_auc": 97.64,
+      "gain_f1": 7.83
+    }
+  ],
+  "global_shap_importance": [
+    {
+      "feature": "graph_shared_ip_links",
+      "label": "Số liên kết trùng Thiết bị / Cụm IP",
+      "importance": 4.486,
+      "category": "Graph ML (NetworkX + Supervised GAT)"
+    },
+    {
+      "feature": "graph_neighbor_suspect_score",
+      "label": "Điểm bất thường cụm lân cận (Supervised GAT Score)",
+      "importance": 1.1451,
+      "category": "Graph ML (NetworkX + Supervised GAT)"
+    },
+    {
+      "feature": "graph_cluster_size",
+      "label": "Quy mô cụm tài khoản Seeding liên thông",
+      "importance": 0.6273,
+      "category": "Graph ML (NetworkX + Supervised GAT)"
+    },
+    {
+      "feature": "nlp_coin_farm_score",
+      "label": "Chỉ số văn mẫu 'Cày Xu' / Spam ký tự",
+      "importance": 0.33,
+      "category": "Vietnamese NLP & Behavioral"
+    },
+    {
+      "feature": "graph_degree_centrality",
+      "label": "Bậc liên kết đồ thị hành vi (Degree Centrality)",
+      "importance": 0.3008,
+      "category": "Graph ML (NetworkX + Supervised GAT)"
+    },
+    {
+      "feature": "nlp_svd_3",
+      "label": "Biểu diễn ngữ nghĩa SVD chiều #4",
+      "importance": 0.1754,
+      "category": "Vietnamese NLP & Behavioral"
+    },
+    {
+      "feature": "nlp_svd_1",
+      "label": "Biểu diễn ngữ nghĩa SVD chiều #2",
+      "importance": 0.1681,
+      "category": "Vietnamese NLP & Behavioral"
+    },
+    {
+      "feature": "nlp_sentiment_rating_mismatch",
+      "label": "Độ lệch Cảm xúc văn bản & Điểm sao",
+      "importance": 0.1093,
+      "category": "Vietnamese NLP & Behavioral"
+    },
+    {
+      "feature": "graph_kcore_number",
+      "label": "Bậc lõi cấu kết chặt nhất (K-Core Decomposition)",
+      "importance": 0.0937,
+      "category": "Graph ML (NetworkX + Supervised GAT)"
+    },
+    {
+      "feature": "beh_helpful_votes",
+      "label": "Lượt hữu ích (Helpful Votes)",
+      "importance": 0.0726,
+      "category": "Vietnamese NLP & Behavioral"
+    },
+    {
+      "feature": "nlp_svd_0",
+      "label": "Biểu diễn ngữ nghĩa SVD chiều #1",
+      "importance": 0.0162,
+      "category": "Vietnamese NLP & Behavioral"
+    },
+    {
+      "feature": "graph_clustering_coeff",
+      "label": "Hệ số cụm tam giác đồ thị (Clustering Coeff)",
+      "importance": 0.0159,
+      "category": "Graph ML (NetworkX + Supervised GAT)"
+    },
+    {
+      "feature": "nlp_svd_4",
+      "label": "Biểu diễn ngữ nghĩa SVD chiều #5",
+      "importance": 0.0127,
+      "category": "Vietnamese NLP & Behavioral"
+    },
+    {
+      "feature": "nlp_seeding_hype_score",
+      "label": "Mật độ từ khóa tâng bốc / Seeding quá đà",
+      "importance": 0.011,
+      "category": "Vietnamese NLP & Behavioral"
+    }
+  ]
+}

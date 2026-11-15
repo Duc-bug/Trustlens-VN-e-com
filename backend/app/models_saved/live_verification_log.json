@@ -1,0 +1,50 @@
+[
+  {
+    "shop_label": "MTBH.VN",
+    "shop_id": 85923677,
+    "item_id": 57961364260,
+    "category": "Linh kiện PC & Điện tử",
+    "product_name": "Vỏ Case Máy Tính MIK H2 Black - Thiết Kế Tối Giản Cứng Cáp, Hỗ Trợ Main M-ATX",
+    "raw_reviews_count": 37,
+    "poisson_reviews_count": 37,
+    "estimated_sold": 131,
+    "raw_rating": 4.76,
+    "platform_rating": 4.76,
+    "adjusted_rating": 4.75,
+    "seeding_count": 0,
+    "seeding_rate_pct": 0.0,
+    "trust_score": 98
+  },
+  {
+    "shop_label": "Longdo Leather",
+    "shop_id": 389909406,
+    "item_id": 12275465288,
+    "category": "Đồ da & Phụ kiện",
+    "product_name": "Ví da nam nhỏ gọn da bò thật - Bảo hành 5 năm - Hàng chính hãng thương hiệu Longdo Leather - B03",
+    "raw_reviews_count": 57,
+    "poisson_reviews_count": 362,
+    "estimated_sold": 1281,
+    "raw_rating": 4.32,
+    "platform_rating": 4.84,
+    "adjusted_rating": 4.79,
+    "seeding_count": 1,
+    "seeding_rate_pct": 1.8,
+    "trust_score": 97
+  },
+  {
+    "shop_label": "Laneige Official Store",
+    "shop_id": 147191228,
+    "item_id": 44384813241,
+    "category": "Mỹ phẩm & Chăm sóc da",
+    "product_name": "[ĐỘC QUYỀN LUCIE] Mặt nạ ngủ dành cho môi Laneige Lip Sleeping Mask 20G",
+    "raw_reviews_count": 39,
+    "poisson_reviews_count": 234,
+    "estimated_sold": 828,
+    "raw_rating": 4.77,
+    "platform_rating": 4.96,
+    "adjusted_rating": 4.86,
+    "seeding_count": 3,
+    "seeding_rate_pct": 7.7,
+    "trust_score": 89
+  }
+]

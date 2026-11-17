@@ -41,17 +41,48 @@ Giao diện sẽ chạy tại `http://localhost:3000`.
 
 ## 2. Dữ Liệu (Dataset) & Cơ Chế Cào Dữ Liệu Shopee
 
-### 2.1. Dataset có sẵn trong dự án
-Hệ thống đi kèm dữ liệu thực nghiệm đã được thu thập và gán nhãn thực tế, nằm tại:
-- `backend/app/models_saved/real_ecommerce_reviews.csv`: Chứa 2.430 đánh giá thực tế thu thập từ các gian hàng thương mại điện tử Việt Nam với 16 trường thuộc tính (nội dung bình luận, số sao, thời gian đánh giá, nhãn thật/seeding/spam nhận xu...).
-- `backend/app/models_saved/sample_products.json`: Danh mục các sản phẩm mẫu đa dạng ngành hàng (Mỹ phẩm, Đồ công nghệ, Gia dụng) để thử nghiệm trực tiếp trên giao diện mà không cần cào mạng.
-- `backend/app/models_saved/all_5_models.pkl`: Trọng số các mô hình máy học đã được huấn luyện sẵn (dung lượng khoảng 1.2 MB), tải về là chạy được ngay không cần train lại.
+### 2.1. Chi tiết về Dataset (`real_ecommerce_reviews.csv`)
+File dữ liệu chính nằm tại: `backend/app/models_saved/real_ecommerce_reviews.csv`. 
+Đây là tập dữ liệu gồm **2.430 bản ghi đánh giá tiếng Việt** được thu thập từ các sàn thương mại điện tử thực tế tại Việt Nam (Shopee, Tiki...).
+
+#### A. Cấu trúc 16 trường thông tin (Columns):
+| Tên cột | Kiểu dữ liệu | Ý nghĩa |
+| :--- | :--- | :--- |
+| `review_id` | String | Mã định danh duy nhất của mỗi đánh giá |
+| `product_id` | String | Mã định danh sản phẩm được đánh giá |
+| `user_id` | String | Mã định danh người dùng viết đánh giá |
+| `user_name` | String | Tên hiển thị của tài khoản |
+| `rating` | Integer | Số sao đánh giá từ 1 đến 5 |
+| `comment` | String | Nội dung văn bản bình luận tiếng Việt |
+| `timestamp` | Datetime | Thời gian đăng đánh giá (`YYYY-MM-DD HH:MM:SS`) |
+| `has_media` | Binary (0/1) | Có đính kèm hình ảnh hoặc video thực tế hay không |
+| `verified_purchase`| Binary (0/1) | Đã xác thực mua hàng trên sàn hay chưa |
+| `helpful_votes` | Integer | Số lượt người mua khác bấm "Hữu ích" |
+| `user_total_reviews`| Integer | Tổng số đánh giá mà tài khoản này đã từng viết |
+| `account_age_days` | Integer | Tuổi đời tài khoản (tính theo số ngày) |
+| `device_ip_hash` | String | Mã băm thiết bị/IP mạng (dùng phát hiện nhóm tài khoản chung IP) |
+| `platform` | String | Nguồn sàn TMĐT (Shopee, Tiki...) |
+| `is_seeding` | Binary (0/1) | Nhãn nhị phân: 0 = Thật (Authentic), 1 = Bất thường / Seeding |
+| `seeding_type` | String | Nhãn chi tiết phân loại 5 dạng hành vi đánh giá |
+
+#### B. Phân bố các nhóm nhãn (`seeding_type`):
+1. **AUTHENTIC (1.558 mẫu - 64.1%):** Đánh giá chân thực của người mua thật, phản ánh ưu/nhược điểm thực tế, khen chê rõ ràng, văn phong tự nhiên.
+2. **COIN_FARM_SPAM (292 mẫu - 12.0%):** Bình luận spam để đủ ký tự nhận xu Shopee (chép ca dao tục ngữ, công thức nấu ăn, lời bài hát, bình luận "chưa dùng cứ cho 5 sao"...).
+3. **TIME_BURST_SEEDING (249 mẫu - 10.2%):** Các đợt đánh giá dồn dập bất thường trong thời gian ngắn (15 - 30 phút) bởi các tài khoản ảo để đẩy tương tác cho sản phẩm.
+4. **AI_MARKETING_SEEDING (173 mẫu - 7.1%):** Đánh giá do AI viết với câu từ bóng bẩy, sáo rỗng, quá trang trọng ("tôi đánh giá cao thiết kế công thái học...").
+5. **TEMPLATE_COPY_PASTE (158 mẫu - 6.5%):** Sao chép rập khuôn văn mẫu nhiều lần ("Shop phục vụ rất tốt, đóng gói cẩn thận, giao hàng nhanh 5 sao...").
+
+#### C. Các file dữ liệu bổ trợ:
+- `backend/app/models_saved/sample_products.json`: Chứa 5 sản phẩm mẫu thuộc các ngành hàng (Mỹ phẩm, Đồ công nghệ, Gia dụng) có sẵn toàn bộ đánh giá để test trực tiếp trên Web mà không cần mạng.
+- `backend/app/models_saved/all_5_models.pkl`: Trọng số các mô hình máy học đã được train sẵn (dung lượng khoảng 1.2 MB), tải về là chạy được ngay không cần train lại.
+
+---
 
 ### 2.2. Cơ chế cào dữ liệu Shopee trực tiếp
 Mã nguồn cào dữ liệu trực tiếp nằm trong file: `backend/app/ml/data_generator.py` (class `MultiPlatformScraper`).
 
 Hệ thống hỗ trợ 3 hình thức đưa dữ liệu vào phân tích:
-1. **Dán link Shopee trực tiếp:** Người dùng dán trực tiếp link sản phẩm Shopee (dạng `https://shopee.vn/...-i.{shopid}.{itemid}` hoặc link rút gọn `shp.ee`) vào thanh tìm kiếm trên web. Backend sẽ bóc tách `shopid`, `itemid` và gửi request đến API phân trang đánh giá của Shopee để lấy bình luận theo thời gian thực.
+1. **Dán link Shopee trực tiếp:** Người dùng dán trực tiếp link sản phẩm Shopee (dạng `https://shopee.vn/...-i.{shopid}.{itemid}` hoặc link rút gọn `https://shp.ee/...`) vào thanh tìm kiếm trên web. Backend sẽ bóc tách `shopid`, `itemid` và gửi request đến API phân trang đánh giá của Shopee để lấy bình luận theo thời gian thực.
 2. **Nhập file CSV / JSON:** Người dùng có thể xuất file đánh giá từ các công cụ bên ngoài và tải lên qua nút "Tải lên CSV/JSON" trên giao diện.
 3. **Script trích xuất 1-click trên trình duyệt:** Hệ thống cung cấp một đoạn script JavaScript ngắn (lấy tại endpoint `/api/extractor-script`). Khi mở trang Shopee bất kỳ trên Chrome, chỉ cần bật Console (F12) dán vào là tải được file JSON chứa toàn bộ đánh giá đang hiển thị để nạp vào hệ thống.
 

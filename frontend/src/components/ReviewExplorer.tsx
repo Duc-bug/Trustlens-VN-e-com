@@ -8,13 +8,12 @@ import {
   AlertTriangle,
   Star,
   ArrowUpDown,
+  ChevronDown,
   ThumbsUp,
   CornerDownRight,
   Video,
   Camera,
-  Repeat,
-  FileCheck2,
-  FileWarning,
+  X,
 } from "lucide-react";
 import { ReviewItem } from "@/types/trustlens";
 
@@ -26,7 +25,6 @@ type FilterMode = "all" | "organic" | "seeding" | "media" | "repeat";
 
 type SortMode =
   | "most_detailed"
-  | "highest_risk"
   | "newest"
   | "has_media"
   | "lowest_star"
@@ -37,70 +35,55 @@ function toPct(val: number): number {
   return val > 1.0 ? val : val * 100.0;
 }
 
-function getFullDiagnosticReasons(review: ReviewItem): {
-  isSuspicious: boolean;
-  reasons: string[];
-} {
+function getShortTags(review: ReviewItem): { text: string; isWarn: boolean }[] {
   const probPct = toPct(review.seeding_probability);
   const simPctRaw = toPct(review.cosine_similarity_max);
 
   if (review.is_seeding || probPct >= 45) {
-    const reasons: string[] = [];
+    const tags: { text: string; isWarn: boolean }[] = [];
     if (review.seeding_signals && review.seeding_signals.length > 0) {
-      reasons.push(...review.seeding_signals);
+      return review.seeding_signals
+        .slice(0, 2)
+        .map((t) => ({ text: t, isWarn: true }));
     }
-    if (reasons.length === 0) {
-      if (
-        simPctRaw >= 50 ||
-        review.seeding_type === "TEMPLATE_COPY_PASTE" ||
-        review.seeding_type === "AI_MARKETING_SEEDING"
-      ) {
-        reasons.push(
-          `Nội dung trùng lặp ngữ nghĩa cao (${simPctRaw.toFixed(1)}%) so với các bình luận khác cùng sản phẩm`
-        );
-      }
-      if (
-        review.burst_15m_count >= 4 ||
-        review.seeding_type === "TIME_BURST_SEEDING"
-      ) {
-        reasons.push(
-          `Bất thường thời gian: Đăng dồn ${Math.max(review.burst_15m_count, 4)} đánh giá 5 sao trong khung 15 phút`
-        );
-      }
-      if (review.seeding_type === "COIN_FARM_SPAM") {
-        reasons.push(
-          "Bình luận theo mẫu hình thức để nhận xu thưởng Shopee, thiếu trải nghiệm thực tế"
-        );
-      }
-      if (reasons.length === 0) {
-        reasons.push(
-          "Nhận xét khen chung chung, thiếu chi tiết kiểm chứng sử dụng thực tế"
-        );
-      }
+    if (
+      simPctRaw >= 50 ||
+      review.seeding_type === "TEMPLATE_COPY_PASTE" ||
+      review.seeding_type === "AI_MARKETING_SEEDING"
+    ) {
+      tags.push({ text: "Nội dung trùng lặp", isWarn: true });
     }
-    return { isSuspicious: true, reasons };
+    if (
+      review.burst_15m_count >= 4 ||
+      review.seeding_type === "TIME_BURST_SEEDING"
+    ) {
+      tags.push({
+        text: `Đăng dồn ${Math.max(review.burst_15m_count, 4)} đơn/15p`,
+        isWarn: true,
+      });
+    }
+    if (review.seeding_type === "COIN_FARM_SPAM") {
+      tags.push({ text: "Bình luận nhận xu", isWarn: true });
+    }
+    return tags.slice(0, 2);
   }
 
-  const reasons: string[] = [];
+  const tags: { text: string; isWarn: boolean }[] = [];
   if (review.authenticity_signals && review.authenticity_signals.length > 0) {
-    reasons.push(...review.authenticity_signals);
+    return review.authenticity_signals
+      .slice(0, 2)
+      .map((t) => ({ text: t, isWarn: false }));
   }
-  if (reasons.length === 0) {
-    if (review.is_repeated_purchase) {
-      reasons.push("Khách hàng quay lại mua lần thứ 2 trở lên tại gian hàng");
-    }
-    if ((review.media_images?.length || 0) > 0) {
-      reasons.push(
-        `Đính kèm ${review.media_images?.length} hình ảnh chụp sản phẩm thực tế`
-      );
-    }
-    if (reasons.length === 0) {
-      reasons.push(
-        "Đánh giá tự nhiên từ giao dịch xác thực, không phát hiện dấu hiệu spam xu hay trùng lặp"
-      );
-    }
+  if (review.is_repeated_purchase) {
+    tags.push({ text: "Khách mua lại", isWarn: false });
   }
-  return { isSuspicious: false, reasons };
+  if ((review.media_images?.length || 0) > 0) {
+    tags.push({
+      text: `Có ${review.media_images?.length} ảnh thực tế`,
+      isWarn: false,
+    });
+  }
+  return tags.slice(0, 2);
 }
 
 function renderHighlightedText(text: string, keyword: string) {
@@ -128,6 +111,49 @@ export default function ReviewExplorer({ reviews }: ReviewExplorerProps) {
   const [starFilter, setStarFilter] = useState<number | null>(null);
   const [sortBy, setSortBy] = useState<SortMode>("most_detailed");
   const [search, setSearch] = useState("");
+  const [visibleCount, setVisibleCount] = useState(20);
+  const [lightboxMedia, setLightboxMedia] = useState<{
+    type: "image" | "video";
+    url: string;
+    cover?: string;
+    review: ReviewItem;
+  } | null>(null);
+
+  const buyerGalleryItems = useMemo(() => {
+    const items: Array<{
+      type: "image" | "video";
+      url: string;
+      cover?: string;
+      review: ReviewItem;
+    }> = [];
+
+    for (const r of reviews) {
+      if (r.is_seeding) continue;
+      if (r.media_videos) {
+        for (const vid of r.media_videos) {
+          if (!vid.template_video && (vid.url || vid.cover)) {
+            items.push({
+              type: "video",
+              url: vid.url || vid.cover,
+              cover: vid.cover,
+              review: r,
+            });
+          }
+        }
+      }
+      if (r.media_images) {
+        for (const imgUrl of r.media_images) {
+          items.push({
+            type: "image",
+            url: imgUrl,
+            review: r,
+          });
+        }
+      }
+      if (items.length >= 14) break;
+    }
+    return items.slice(0, 12);
+  }, [reviews]);
 
   const counts = useMemo(
     () => ({
@@ -193,9 +219,6 @@ export default function ReviewExplorer({ reviews }: ReviewExplorerProps) {
           (b.is_repeated_purchase ? 25 : 0);
         return scoreB - scoreA;
       }
-      if (sortBy === "highest_risk") {
-        return toPct(b.seeding_probability) - toPct(a.seeding_probability);
-      }
       if (sortBy === "has_media") {
         const mA =
           (a.media_images?.length || 0) + (a.media_videos?.length || 0) * 2;
@@ -217,13 +240,15 @@ export default function ReviewExplorer({ reviews }: ReviewExplorerProps) {
     });
   }, [reviews, filter, starFilter, sortBy, search]);
 
+  const visibleReviews = filteredAndSorted.slice(0, visibleCount);
+
   const filterTabs = [
     { id: "all", label: `Tất cả (${counts.all})` },
     { id: "organic", label: `Hợp lệ (${counts.organic})` },
     { id: "seeding", label: `Nghi vấn (${counts.seeding})` },
     { id: "media", label: `Có ảnh/video (${counts.media})` },
     ...(counts.repeat > 0
-      ? [{ id: "repeat", label: `Khách mua lại (${counts.repeat})` }]
+      ? [{ id: "repeat", label: `Mua lại (${counts.repeat})` }]
       : []),
   ];
 
@@ -231,29 +256,59 @@ export default function ReviewExplorer({ reviews }: ReviewExplorerProps) {
     <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-2xs sm:p-5">
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-3.5">
-        <div>
-          <h3 className="text-base font-extrabold text-gray-900">
-            Danh sách Đánh giá &amp; Chẩn đoán Chi tiết ({filteredAndSorted.length} đánh giá)
-          </h3>
-          <p className="mt-0.5 text-xs text-gray-500">
-            Hiển thị nguyên văn 100% nội dung bình luận, hình ảnh/video và toàn bộ căn cứ nhận diện từng đánh giá.
-          </p>
-        </div>
+        <h3 className="text-base font-extrabold text-gray-900">
+          Danh sách đánh giá ({filteredAndSorted.length})
+        </h3>
 
         <div className="flex items-center gap-3 text-xs font-bold">
           <span className="inline-flex items-center gap-1.5 text-[#16A34A]">
-            <span className="h-2.5 w-2.5 rounded-full bg-[#16A34A]" />
-            Hợp lệ ({counts.organic})
+            <span className="h-2 w-2 rounded-full bg-[#16A34A]" />
+            Hợp lệ
           </span>
           <span className="inline-flex items-center gap-1.5 text-[#DC2626]">
-            <span className="h-2.5 w-2.5 rounded-full bg-[#DC2626]" />
-            Nghi vấn ({counts.seeding})
+            <span className="h-2 w-2 rounded-full bg-[#DC2626]" />
+            Nghi vấn
           </span>
         </div>
       </div>
 
+      {/* Buyer Media Gallery Strip */}
+      {buyerGalleryItems.length > 0 && (
+        <div className="mt-3.5 rounded-xl border border-gray-100 bg-gray-50/70 p-3">
+          <div className="mb-2 flex items-center justify-between">
+            <span className="inline-flex items-center gap-1.5 text-xs font-bold text-gray-700">
+              <Camera className="h-3.5 w-3.5 text-[#0D5CB6]" />
+              Ảnh &amp; video thực tế ({buyerGalleryItems.length})
+            </span>
+          </div>
+          <div className="flex items-center gap-2 overflow-x-auto pb-1">
+            {buyerGalleryItems.map((item, idx) => (
+              <button
+                key={idx}
+                type="button"
+                onClick={() => setLightboxMedia(item)}
+                className="group relative h-14 w-14 shrink-0 overflow-hidden rounded-xl border border-gray-200 bg-white"
+              >
+                <img
+                  src={item.type === "video" ? item.cover || item.url : item.url}
+                  alt="Ảnh thực tế"
+                  width={56}
+                  height={56}
+                  className="h-14 w-14 object-cover transition group-hover:scale-105"
+                />
+                {item.type === "video" && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/30">
+                    <Video className="h-3.5 w-3.5 text-white" />
+                  </div>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Filter + Star Filter + Search + Sort Bar */}
-      <div className="my-4 space-y-2.5 rounded-xl border border-gray-100 bg-gray-50/60 p-3">
+      <div className="my-3.5 space-y-2.5 rounded-xl border border-gray-100 bg-gray-50/60 p-3">
         <div className="flex flex-col justify-between gap-2.5 lg:flex-row lg:items-center">
           <div className="flex flex-wrap items-center gap-1.5">
             {filterTabs.map((tab) => {
@@ -262,7 +317,10 @@ export default function ReviewExplorer({ reviews }: ReviewExplorerProps) {
                 <button
                   key={tab.id}
                   type="button"
-                  onClick={() => setFilter(tab.id as FilterMode)}
+                  onClick={() => {
+                    setFilter(tab.id as FilterMode);
+                    setVisibleCount(12);
+                  }}
                   className={`rounded-xl px-3 py-1.5 text-xs font-bold transition ${
                     active
                       ? "bg-[#0D5CB6] text-white"
@@ -276,15 +334,27 @@ export default function ReviewExplorer({ reviews }: ReviewExplorerProps) {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <div className="relative min-w-[200px] flex-1 sm:w-60">
+            <div className="relative min-w-[180px] flex-1 sm:w-52">
               <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-gray-400" />
               <input
                 type="text"
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Tìm nội dung, người mua, phân loại..."
-                className="w-full rounded-xl border border-gray-200 bg-white py-1.5 pl-8 pr-3 text-xs font-semibold text-gray-900 placeholder-gray-400 focus:border-[#1A73E8] focus:outline-none"
+                onChange={(e) => {
+                  setSearch(e.target.value);
+                  setVisibleCount(12);
+                }}
+                placeholder="Tìm từ khóa, phân loại..."
+                className="w-full rounded-xl border border-gray-200 bg-white py-1.5 pl-8 pr-7 text-xs font-semibold text-gray-900 placeholder-gray-400 focus:border-[#1A73E8] focus:outline-none"
               />
+              {search && (
+                <button
+                  type="button"
+                  onClick={() => setSearch("")}
+                  className="absolute right-2.5 top-2 text-gray-400 hover:text-gray-700"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
             </div>
 
             <div className="relative flex items-center">
@@ -295,12 +365,11 @@ export default function ReviewExplorer({ reviews }: ReviewExplorerProps) {
                 className="rounded-xl border border-gray-200 bg-white py-1.5 pl-7 pr-3 text-xs font-bold text-gray-700 focus:border-[#1A73E8] focus:outline-none"
                 aria-label="Sắp xếp bình luận"
               >
-                <option value="most_detailed">Ưu tiên đánh giá chi tiết</option>
-                <option value="highest_risk">Mức độ nghi vấn cao → thấp</option>
-                <option value="newest">Thời gian mới nhất</option>
-                <option value="has_media">Nhiều ảnh / video nhất</option>
-                <option value="lowest_star">Số sao thấp → cao</option>
-                <option value="highest_star">Số sao cao → thấp</option>
+                <option value="most_detailed">Chi tiết nhất</option>
+                <option value="newest">Mới nhất</option>
+                <option value="has_media">Có ảnh / video</option>
+                <option value="lowest_star">Sao thấp → cao</option>
+                <option value="highest_star">Sao cao → thấp</option>
               </select>
             </div>
           </div>
@@ -310,78 +379,83 @@ export default function ReviewExplorer({ reviews }: ReviewExplorerProps) {
         <div className="flex flex-wrap items-center gap-1.5 border-t border-gray-200/60 pt-2">
           <button
             type="button"
-            onClick={() => setStarFilter(null)}
+            onClick={() => {
+              setStarFilter(null);
+              setVisibleCount(12);
+            }}
             className={`rounded-lg px-2.5 py-1 text-xs font-bold transition ${
               starFilter === null
                 ? "bg-amber-500 text-white"
                 : "bg-white text-gray-600 hover:bg-gray-100"
             }`}
           >
-            Tất cả mức sao
+            Tất cả sao
           </button>
           {[5, 4, 3, 2, 1].map((st) => (
             <button
               key={st}
               type="button"
-              onClick={() => setStarFilter(starFilter === st ? null : st)}
+              onClick={() => {
+                setStarFilter(starFilter === st ? null : st);
+                setVisibleCount(12);
+              }}
               className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-bold transition ${
                 starFilter === st
                   ? "bg-amber-500 text-white"
                   : "bg-white text-gray-700 hover:bg-amber-50"
               }`}
             >
-              <span>{st} sao ({st}★)</span>
+              <span>{st}★</span>
               <span
                 className={`text-[10px] ${
                   starFilter === st ? "text-amber-100" : "text-gray-400"
                 }`}
               >
-                [{counts.stars[st] || 0}]
+                ({counts.stars[st] || 0})
               </span>
             </button>
           ))}
         </div>
       </div>
 
-      {/* Review Cards (Full Un-truncated Content + Complete Diagnostic Box) */}
-      <div className="space-y-4">
-        {filteredAndSorted.map((review) => {
+      {/* Review Cards (Minimalist & Scannable) */}
+      <div className="space-y-3">
+        {visibleReviews.map((review) => {
           const probPct = toPct(review.seeding_probability);
-          const simPct = toPct(review.cosine_similarity_max);
-          const isSeeding = review.is_seeding && probPct >= 60;
+          const isSeeding = review.is_seeding && probPct >= 65;
           const isWarning =
-            (review.is_seeding && probPct < 60) ||
-            (!review.is_seeding && probPct >= 42);
+            (review.is_seeding && probPct < 65) ||
+            (!review.is_seeding && probPct >= 40);
 
           const statusConfig = isSeeding
             ? {
-                badgeText: `Nghi vấn Seeding / Spam xu (${probPct.toFixed(0)}%)`,
+                badgeText: "Nghi vấn",
                 badgeClass:
-                  "border-[#DC2626]/30 bg-[#DC2626]/10 text-[#DC2626]",
-                cardClass: "border-red-200 bg-red-50/15",
+                  "border-[#DC2626]/25 bg-[#DC2626]/10 text-[#DC2626]",
+                cardClass: "border-gray-200 bg-red-50/15",
                 avatarClass: "bg-[#DC2626] text-white",
                 Icon: ShieldAlert,
               }
             : isWarning
             ? {
-                badgeText: `Cần kiểm tra (${probPct.toFixed(0)}%)`,
+                badgeText: "Cần xem lại",
                 badgeClass:
                   "border-[#F59E0B]/30 bg-[#F59E0B]/10 text-[#D97706]",
-                cardClass: "border-amber-200 bg-amber-50/15",
+                cardClass: "border-gray-200 bg-amber-50/15",
                 avatarClass: "bg-[#F59E0B] text-white",
                 Icon: AlertTriangle,
               }
             : {
-                badgeText: `Đánh giá Hợp lệ (${Math.max(1, Math.round(100 - probPct))}% tin cậy)`,
+                badgeText: "Hợp lệ",
                 badgeClass:
-                  "border-[#16A34A]/30 bg-[#16A34A]/10 text-[#16A34A]",
+                  "border-[#16A34A]/25 bg-[#16A34A]/10 text-[#16A34A]",
                 cardClass: "border-gray-200 bg-white",
                 avatarClass: "bg-[#16A34A] text-white",
                 Icon: CheckCircle2,
               };
 
           const StatusIcon = statusConfig.Icon;
-          const diag = getFullDiagnosticReasons(review);
+          const tags = getShortTags(review);
 
           const initials = (review.user_name || "KH")
             .slice(0, 2)
@@ -390,36 +464,36 @@ export default function ReviewExplorer({ reviews }: ReviewExplorerProps) {
           return (
             <div
               key={review.review_id}
-              className={`rounded-2xl border p-4 sm:p-5 ${statusConfig.cardClass}`}
+              className={`rounded-2xl border p-4 transition ${statusConfig.cardClass}`}
             >
-              {/* Top Row: User Info + Full Status Badge */}
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="flex items-start gap-3">
+              {/* Top Row */}
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2.5">
                   {review.user_avatar ? (
                     <img
                       src={review.user_avatar}
                       alt={review.user_name}
-                      width={36}
-                      height={36}
-                      className="h-9 w-9 shrink-0 rounded-full border border-gray-200 object-cover"
+                      width={32}
+                      height={32}
+                      className="h-8 w-8 shrink-0 rounded-full border border-gray-200 object-cover"
                     />
                   ) : (
                     <div
-                      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-extrabold ${statusConfig.avatarClass}`}
+                      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-extrabold ${statusConfig.avatarClass}`}
                     >
                       {initials}
                     </div>
                   )}
-                  <div className="space-y-1">
+                  <div>
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-sm font-extrabold text-gray-900">
+                      <span className="text-xs font-extrabold text-gray-900 sm:text-sm">
                         {review.user_name}
                       </span>
                       <div className="flex items-center gap-0.5">
                         {Array.from({ length: 5 }).map((_, i) => (
                           <Star
                             key={i}
-                            className={`h-3.5 w-3.5 ${
+                            className={`h-3 w-3 ${
                               i < review.rating
                                 ? "fill-[#F59E0B] text-[#F59E0B]"
                                 : "text-gray-300"
@@ -427,236 +501,123 @@ export default function ReviewExplorer({ reviews }: ReviewExplorerProps) {
                           />
                         ))}
                       </div>
-                      <span className="text-xs font-bold text-gray-700">
-                        ({review.rating}/5 sao)
-                      </span>
-                      {review.is_repeated_purchase && (
-                        <span className="inline-flex items-center gap-1 rounded-md bg-emerald-100 px-2 py-0.5 text-[11px] font-extrabold text-emerald-800">
-                          <Repeat className="h-3 w-3" />
-                          Khách mua lại lần 2+
-                        </span>
-                      )}
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-medium text-gray-500">
-                      <span>Thời gian: {review.timestamp.slice(0, 16)}</span>
+                    <div className="flex flex-wrap items-center gap-2 text-[11px] font-medium text-gray-400">
+                      <span>{review.timestamp.slice(0, 16)}</span>
                       {review.variation && (
                         <span>
-                          • Phân loại đã mua:{" "}
-                          <strong className="text-gray-800">
+                          • Phân loại:{" "}
+                          <strong className="text-gray-600">
                             {review.variation}
                           </strong>
                         </span>
                       )}
                       {review.helpful_votes > 0 && (
-                        <span className="inline-flex items-center gap-1 font-bold text-[#0D5CB6]">
+                        <span className="inline-flex items-center gap-1 text-[#0D5CB6]">
                           • <ThumbsUp className="h-3 w-3" />{" "}
-                          {review.helpful_votes} lượt hữu ích
+                          {review.helpful_votes}
                         </span>
                       )}
                     </div>
                   </div>
                 </div>
 
-                {/* Status Badge & Archetype */}
-                <div className="flex flex-wrap items-center gap-2">
-                  {review.is_seeding && review.seeding_type_label && (
-                    <span className="rounded-lg border border-red-200 bg-white px-2.5 py-1 text-xs font-bold text-[#DC2626]">
-                      Nhóm: {review.seeding_type_label}
+                {/* Status + Short Tags */}
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {tags.map((t, idx) => (
+                    <span
+                      key={idx}
+                      className={`rounded-lg border px-2 py-0.5 text-[11px] font-semibold ${
+                        t.isWarn
+                          ? "border-red-200 bg-white text-[#DC2626]"
+                          : "border-emerald-200 bg-emerald-50/60 text-emerald-700"
+                      }`}
+                    >
+                      {t.isWarn ? `⚠ ${t.text}` : `✓ ${t.text}`}
                     </span>
-                  )}
+                  ))}
                   <span
-                    className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-extrabold ${statusConfig.badgeClass}`}
+                    className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-extrabold ${statusConfig.badgeClass}`}
                   >
-                    <StatusIcon className="h-3.5 w-3.5" />
+                    <StatusIcon className="h-3 w-3" />
                     {statusConfig.badgeText}
                   </span>
                 </div>
               </div>
 
-              {/* Shopee Template Criteria Tags & Low Rating Reasons (Full) */}
-              {((review.template_tags && review.template_tags.length > 0) ||
-                (review.low_rating_reasons &&
-                  review.low_rating_reasons.length > 0)) && (
-                <div className="mt-3 flex flex-wrap items-center gap-1.5">
-                  {review.template_tags?.map((tag, tIdx) => (
-                    <span
-                      key={`tpl-${tIdx}`}
-                      className="rounded-lg border border-blue-100 bg-blue-50/60 px-2.5 py-0.5 text-xs font-semibold text-blue-900"
-                    >
-                      {tag}
-                    </span>
-                  ))}
-                  {review.low_rating_reasons?.map((lr, lIdx) => (
-                    <span
-                      key={`low-${lIdx}`}
-                      className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-xs font-bold text-amber-900"
-                    >
-                      Lý do phản ánh: {lr}
-                    </span>
-                  ))}
-                </div>
-              )}
-
-              {/* Full Comment Text (No line-clamp, no truncation) */}
-              <div className="mt-3 rounded-xl border border-gray-100 bg-white p-3.5">
-                <p className="whitespace-pre-line text-sm leading-relaxed text-gray-900">
+              {/* Comment Text (Full Un-truncated) */}
+              <div className="mt-2.5">
+                <p className="whitespace-pre-line text-sm leading-relaxed text-gray-800">
                   {renderHighlightedText(review.comment, search)}
                 </p>
               </div>
 
-              {/* Direct Inline Buyer Photos & Videos (No Lightbox Popup Required) */}
+              {/* Buyer Photos & Videos */}
               {((review.media_images && review.media_images.length > 0) ||
                 (review.media_videos && review.media_videos.length > 0)) && (
-                <div className="mt-3 space-y-2">
-                  <div className="flex items-center gap-2 text-xs font-bold text-gray-600">
-                    <Camera className="h-3.5 w-3.5 text-[#0D5CB6]" />
-                    <span>
-                      Tư liệu đính kèm:{" "}
-                      {review.media_images?.length || 0} hình ảnh
-                      {review.media_videos && review.media_videos.length > 0
-                        ? ` • ${review.media_videos.length} video`
-                        : ""}
-                    </span>
-                  </div>
-                  <div className="flex flex-wrap items-start gap-3">
-                    {review.media_videos?.map((vid, vIdx) => {
-                      const sec = vid.duration_ms
-                        ? Math.round(vid.duration_ms / 1000)
-                        : null;
-                      return (
-                        <div
-                          key={`vid-${vIdx}`}
-                          className="overflow-hidden rounded-xl border border-gray-200 bg-gray-950"
-                        >
-                          {vid.url ? (
-                            <video
-                              src={vid.url}
-                              poster={vid.cover}
-                              controls
-                              preload="metadata"
-                              className="h-36 w-52 object-contain"
-                            />
-                          ) : (
-                            <div className="relative h-36 w-52">
-                              {vid.cover && (
-                                <img
-                                  src={vid.cover}
-                                  alt="Ảnh bìa video"
-                                  className="h-36 w-52 object-cover"
-                                />
-                              )}
-                              <div className="absolute inset-0 flex items-center justify-center bg-black/40 text-xs font-bold text-white">
-                                <Video className="mr-1 h-4 w-4" />
-                                Video {sec ? `(${sec}s)` : ""}
-                              </div>
-                            </div>
-                          )}
-                          <div className="bg-gray-900 px-2.5 py-1 text-[11px] font-semibold text-gray-200">
-                            Video đính kèm {sec ? `• Thời lượng: ${sec} giây` : ""}
-                            {vid.template_video ? " • (Video mẫu)" : ""}
-                          </div>
-                        </div>
-                      );
-                    })}
-
-                    {review.media_images?.map((imgUrl, imgIdx) => (
-                      <a
-                        key={`img-${imgIdx}`}
-                        href={imgUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="block overflow-hidden rounded-xl border border-gray-200 bg-gray-50"
-                      >
+                <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                  {review.media_videos?.map((vid, vIdx) => (
+                    <button
+                      key={`vid-${vIdx}`}
+                      type="button"
+                      onClick={() =>
+                        setLightboxMedia({
+                          type: "video",
+                          url: vid.url || vid.cover,
+                          cover: vid.cover,
+                          review,
+                        })
+                      }
+                      className="group relative h-14 w-14 overflow-hidden rounded-xl border border-gray-200 bg-gray-900"
+                    >
+                      {vid.cover && (
                         <img
-                          src={imgUrl}
-                          alt={`Ảnh thực tế ${imgIdx + 1} của ${review.user_name}`}
-                          className="h-36 w-36 object-cover"
+                          src={vid.cover}
+                          alt="Video review"
+                          width={56}
+                          height={56}
+                          className="h-14 w-14 object-cover opacity-85 transition group-hover:scale-105"
                         />
-                      </a>
-                    ))}
-                  </div>
+                      )}
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/30">
+                        <Video className="h-3.5 w-3.5 text-white" />
+                      </div>
+                    </button>
+                  ))}
+
+                  {review.media_images?.slice(0, 6).map((imgUrl, imgIdx) => (
+                    <button
+                      key={`img-${imgIdx}`}
+                      type="button"
+                      onClick={() =>
+                        setLightboxMedia({
+                          type: "image",
+                          url: imgUrl,
+                          review,
+                        })
+                      }
+                      className="h-14 w-14 overflow-hidden rounded-xl border border-gray-200 bg-gray-100"
+                    >
+                      <img
+                        src={imgUrl}
+                        alt={`Ảnh ${imgIdx + 1}`}
+                        width={56}
+                        height={56}
+                        className="h-14 w-14 object-cover transition hover:scale-105"
+                      />
+                    </button>
+                  ))}
                 </div>
               )}
 
-              {/* COMPLETE DIAGNOSTIC REASONS & METRICS BOX */}
-              <div
-                className={`mt-3 rounded-xl border p-3.5 text-xs ${
-                  diag.isSuspicious
-                    ? "border-red-200 bg-red-50/50 text-red-950"
-                    : "border-emerald-200 bg-emerald-50/40 text-emerald-950"
-                }`}
-              >
-                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-black/5 pb-2">
-                  <span className="inline-flex items-center gap-1.5 font-extrabold">
-                    {diag.isSuspicious ? (
-                      <>
-                        <FileWarning className="h-4 w-4 text-[#DC2626]" />
-                        <span>
-                          Căn cứ nhận diện Đánh giá Nghi vấn / Seeding / Spam xu:
-                        </span>
-                      </>
-                    ) : (
-                      <>
-                        <FileCheck2 className="h-4 w-4 text-[#16A34A]" />
-                        <span>
-                          Căn cứ xác nhận Đánh giá Hợp lệ từ Người mua thật:
-                        </span>
-                      </>
-                    )}
-                  </span>
-
-                  {/* Concrete Quantitative Indicators */}
-                  <div className="flex flex-wrap items-center gap-2 text-[11px] font-bold">
-                    <span className="rounded bg-white/90 px-2 py-0.5 text-gray-700">
-                      Tương đồng văn bản: {simPct.toFixed(1)}%
-                    </span>
-                    <span className="rounded bg-white/90 px-2 py-0.5 text-gray-700">
-                      Mật độ 15 phút: {review.burst_15m_count} đơn
-                    </span>
-                    <span className="rounded bg-white/90 px-2 py-0.5 text-gray-700">
-                      Tần suất tài khoản tại shop: {review.user_total_reviews} lần
-                    </span>
-                    {review.detailed_rating && (
-                      <span className="rounded bg-white/90 px-2 py-0.5 text-gray-700">
-                        Điểm thành phần: Chất lượng{" "}
-                        {review.detailed_rating.product_quality ?? review.rating}★ •
-                        Shop {review.detailed_rating.seller_service ?? 5}★ • Giao hàng{" "}
-                        {review.detailed_rating.delivery_service ?? 5}★
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                {/* Full Bulleted List of Diagnostic Sentences */}
-                <ul className="mt-2 space-y-1.5 pl-1">
-                  {diag.reasons.map((reasonText, rIdx) => (
-                    <li
-                      key={rIdx}
-                      className="flex items-start gap-2 leading-relaxed font-semibold"
-                    >
-                      <span
-                        className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${
-                          diag.isSuspicious ? "bg-[#DC2626]" : "bg-[#16A34A]"
-                        }`}
-                      />
-                      <span>{reasonText}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-
-              {/* Seller Reply (Full) */}
+              {/* Seller Reply */}
               {review.seller_reply && (
-                <div className="mt-3 flex items-start gap-2 rounded-xl border border-gray-200/70 bg-gray-50 px-3.5 py-2.5 text-xs text-gray-700">
+                <div className="mt-2.5 flex items-start gap-2 rounded-xl bg-gray-50 px-3 py-2 text-xs text-gray-600">
                   <CornerDownRight className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#FF6B35]" />
                   <div>
-                    <strong className="text-gray-900">
-                      Phản hồi từ Gian hàng:{" "}
-                    </strong>
-                    <span className="whitespace-pre-line">
-                      {review.seller_reply}
-                    </span>
+                    <strong className="text-gray-800">Phản hồi của Shop: </strong>
+                    <span>{review.seller_reply}</span>
                   </div>
                 </div>
               )}
@@ -666,10 +627,86 @@ export default function ReviewExplorer({ reviews }: ReviewExplorerProps) {
 
         {filteredAndSorted.length === 0 && (
           <div className="rounded-2xl border border-dashed border-gray-200 py-8 text-center text-sm text-gray-500">
-            Không tìm thấy bình luận nào khớp với bộ lọc hiện tại.
+            Không tìm thấy bình luận nào khớp với bộ lọc.
           </div>
         )}
       </div>
+
+      {/* Load More Button */}
+      {visibleCount < filteredAndSorted.length && (
+        <div className="mt-4 text-center">
+          <button
+            type="button"
+            onClick={() => setVisibleCount((prev) => prev + 12)}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-gray-50 px-4 py-2 text-xs font-extrabold text-gray-700 hover:bg-gray-100"
+          >
+            <span>
+              Xem thêm ({filteredAndSorted.length - visibleCount})
+            </span>
+            <ChevronDown className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
+
+      {/* Lightbox Modal */}
+      {lightboxMedia && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-xs"
+          onClick={() => setLightboxMedia(null)}
+        >
+          <div
+            className="relative flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl md:flex-row"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => setLightboxMedia(null)}
+              className="absolute right-3 top-3 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black"
+            >
+              <X className="h-4 w-4" />
+            </button>
+
+            <div className="flex flex-1 items-center justify-center bg-gray-950 p-3 md:min-h-[400px]">
+              {lightboxMedia.type === "video" ? (
+                <video
+                  src={lightboxMedia.url}
+                  poster={lightboxMedia.cover}
+                  controls
+                  autoPlay
+                  className="max-h-[75vh] w-full rounded-xl object-contain"
+                />
+              ) : (
+                <img
+                  src={lightboxMedia.url}
+                  alt="Ảnh thực tế"
+                  className="max-h-[75vh] w-full rounded-xl object-contain"
+                />
+              )}
+            </div>
+
+            <div className="flex w-full flex-col justify-between border-t border-gray-100 p-4 md:w-72 md:border-l md:border-t-0">
+              <div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-extrabold text-gray-900">
+                    {lightboxMedia.review.user_name}
+                  </span>
+                  <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-[#16A34A]">
+                    {lightboxMedia.review.rating}★
+                  </span>
+                </div>
+                {lightboxMedia.review.variation && (
+                  <div className="mt-1 text-xs text-gray-500">
+                    Phân loại: {lightboxMedia.review.variation}
+                  </div>
+                )}
+                <p className="mt-2.5 max-h-48 overflow-y-auto text-xs leading-relaxed text-gray-700">
+                  {lightboxMedia.review.comment}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

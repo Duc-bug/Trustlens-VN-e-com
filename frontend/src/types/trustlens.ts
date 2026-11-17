@@ -22,7 +22,37 @@ export interface ShopeeTopProductItem {
   name: string;
   image_url: string;
   review_count: number;
+  historical_sold?: number;
+  avg_rating?: number;
+  price_vnd?: number;
+  url?: string;
   variations: string[];
+}
+
+export interface MarketSimilarProductItem {
+  name: string;
+  price_vnd: number;
+  merchant_name: string;
+  image_url: string;
+  url: string;
+}
+
+export interface BuyerDealTipItem {
+  review_id?: string;
+  user_name: string;
+  rating: number;
+  timestamp: string;
+  variation?: string;
+  comment: string;
+  mentioned_price_vnd: number;
+  tags: string[];
+}
+
+export interface BuyerPriceStats {
+  median_vnd: number;
+  min_vnd: number;
+  max_vnd: number;
+  mention_count: number;
 }
 
 export interface ShopeeLiveMeta {
@@ -41,6 +71,8 @@ export interface ShopeeLiveMeta {
   total_raw_ratings_scanned: number;
   total_text_reviews_extracted: number;
   exact_item_reviews_count: number;
+  historical_sold?: number;
+  shop_reply_rate_pct?: number;
   reviews_with_media_count: number;
   variations: string[];
   star_distribution: Record<string, number>;
@@ -51,6 +83,10 @@ export interface ShopeeLiveMeta {
   };
   shop_categories: ShopeeCategoryItem[];
   shop_top_products: ShopeeTopProductItem[];
+  market_similar_products?: MarketSimilarProductItem[];
+  shop_gift_items?: ShopeeTopProductItem[];
+  buyer_deal_tips?: BuyerDealTipItem[];
+  buyer_price_stats?: BuyerPriceStats;
 }
 
 export interface ProductInfo {

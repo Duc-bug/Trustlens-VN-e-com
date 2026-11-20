@@ -1,14 +1,3 @@
-"""
-FastAPI Endpoints for TrustLens VN (`routes.py`).
-Provides:
-  - GET  /api/demo-products
-  - GET  /api/demo-products/{product_id}
-  - POST /api/analyze-url
-  - POST /api/analyze-csv
-  - GET  /api/benchmarks
-  - GET  /api/extractor-script
-"""
-
 from __future__ import annotations
 
 import io

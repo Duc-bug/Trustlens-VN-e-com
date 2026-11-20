@@ -1,13 +1,3 @@
-"""
-Feature Engineering Pipeline for TrustLens VN (`feature_engine.py`).
-Extracts 3 complementary groups of features (39 total features):
-  1. Vietnamese NLP & Semantic Embeddings (TF-IDF n-grams + TruncatedSVD + Shannon Character Entropy
-     + Clause Burstiness + Sentiment-Rating Mismatch + Linguistic Seeding/Coin-Farm/AI Indicators)
-  2. Temporal Burstiness Dynamics (15-min Sliding Window Density, Burst Z-Score, Inter-arrival Delta)
-  3. Behavioral & Graph Topological Features (NetworkX PageRank, Centrality, K-Core Decomposition,
-     Louvain Modularity Q, and Supervised 2-Layer GAT Message Passing Embeddings)
-"""
-
 from __future__ import annotations
 
 import math

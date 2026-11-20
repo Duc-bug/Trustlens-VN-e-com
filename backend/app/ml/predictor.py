@@ -1,14 +1,3 @@
-"""
-Real-Time Inference & Explainable AI (SHAP) Predictor (`predictor.py`).
-Executes the trained Hybrid LightGBM + Graph Attention pipeline on any product's reviews,
-computing:
-  - Per-review Seeding Probability, Fraud Archetype, and Top-3 Local SHAP Explanations
-  - Product-level Adjusted True Rating (Điểm Thật sau lọc Seeding) vs Platform Rating (Điểm Sàn)
-  - Product-level SHAP Feature Importance (`shap.TreeExplainer`)
-  - Temporal Burstiness Timeline (`burst_timeline`) & Behavioral Seeding Graph (`seeding_graph`)
-  - Full Shopee Live Metadata pass-through (Shop Info, Categories, Variations, Buyer Photos/Videos, Seller Replies)
-"""
-
 from __future__ import annotations
 
 import json

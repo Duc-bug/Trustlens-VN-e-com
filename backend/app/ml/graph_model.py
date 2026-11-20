@@ -1,13 +1,3 @@
-"""
-Behavioral Graph Construction & Supervised Graph Attention Message Passing Engine (`graph_model.py`).
-Builds a User-Review behavioral interaction network using NetworkX and computes:
-  1. Topological Graph Metrics: PageRank, Degree Centrality, Local Clustering Coefficient,
-     K-Core Decomposition (`core_number`), and Louvain/Modularity Community Detection (`Q`-score).
-  2. Supervised 2-Layer Graph Attention Network (GAT) Message Passing Embeddings trained via
-     Binary Cross-Entropy backpropagation over the behavioral adjacency matrix.
-  3. Interactive Network Visualization Payload (Nodes, Edges, Communities) for Frontend `SeedingGraph.tsx`.
-"""
-
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Tuple

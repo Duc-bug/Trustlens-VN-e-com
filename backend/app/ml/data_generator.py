@@ -1,17 +1,3 @@
-"""
-Real Multi-Platform E-Commerce Review Crawler & Dataset Builder for TrustLens VN.
-Supports:
-  1. Shopee.vn LIVE Multi-Threaded Crawler (100% Cookie-free via `get_shop_core_info`,
-     `get_categories`, and parallel `seller_operation/get_shop_ratings_new` + `get_ratings`)
-     -> Extracts full Shop Info, Categories, Product Image, Variations, 3-Criteria Detailed Ratings,
-        Star Distribution, Buyer Unbox Photos/Videos, Seller Replies, and Real Customer Reviews!
-  2. Tiki.vn Public REST API v2 (100% live real-time review & product crawling)
-  3. TikTok Shop Product Review SSR & API Scraper + Real Crawled Corpus
-  4. Google Maps Place Review Parser + Real Crawled Local Business Reviews
-  5. Lazada.vn Product Review Parser
-  6. 2,400+ Labeled Vietnamese E-Commerce Reviews Dataset (Real Crawled + Empirical Seeding Injection)
-"""
-
 from __future__ import annotations
 
 import concurrent.futures

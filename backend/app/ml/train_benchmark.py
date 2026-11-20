@@ -1,23 +1,3 @@
-"""
-Model Training, Stratified 5-Fold Cross-Validation, Statistical Hypothesis Testing,
-Probability Calibration & Academic Benchmark Suite (`train_benchmark.py`).
-
-Trains and evaluates 5 progressive models on the 2,430-review Vietnamese E-Commerce Dataset:
-  1. Logistic Regression (Baseline 1: NLP & TF-IDF Only)
-  2. Random Forest (Baseline 2: NLP + Temporal Burstiness)
-  3. XGBoost (Baseline 3: NLP + Temporal + Account Tabular)
-  4. LightGBM + Supervised GAT (Baseline 4: Single GBDT with Graph ML)
-  5. Proposed TrustLens Stacking Ensemble + Isotonic Calibration (LightGBM + XGBoost + RF Meta-Learner + Supervised GAT)
-
-Computes:
-  - Hold-out Test Set Metrics: Accuracy, Precision, Recall, F1-Score, ROC-AUC, PR-AUC,
-    Matthews Correlation Coefficient (MCC), Brier Calibration Score, Optimal F1 Threshold (tau*).
-  - Stratified 5-Fold Cross-Validation: Mean ± Std for F1 and ROC-AUC across 5 folds.
-  - Paired Student's t-test (t-statistic & p-value) proving statistical significance (p < 0.005).
-  - Multi-model ROC Curve & Precision-Recall Curve coordinates for interactive frontend plotting.
-  - SHAP Global Feature Importance (`shap.TreeExplainer`).
-"""
-
 from __future__ import annotations
 
 import json

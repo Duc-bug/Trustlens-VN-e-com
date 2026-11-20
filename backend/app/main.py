@@ -1,8 +1,3 @@
-"""
-FastAPI Main Entry Point (`main.py`) for TrustLens VN.
-Configures CORS, mounts `/api` routes, and provides health check.
-"""
-
 from __future__ import annotations
 
 from fastapi import FastAPI

@@ -162,9 +162,14 @@ def _run_stratified_5fold_cv(
     }
 
 
-def train_and_save_all(models_dir: str) -> Dict[str, Any]:
+def train_and_save_all(models_dir: str, rebuild_data: bool = False) -> Dict[str, Any]:
     os.makedirs(models_dir, exist_ok=True)
-    df, demo_products = build_demo_products_and_dataset(models_dir)
+    csv_path = os.path.join(models_dir, "real_ecommerce_reviews.csv")
+    samples_path = os.path.join(models_dir, "sample_products.json")
+    if (not rebuild_data) and os.path.exists(csv_path) and os.path.exists(samples_path):
+        df = pd.read_csv(csv_path)
+    else:
+        df, _ = build_demo_products_and_dataset(models_dir)
 
     engine = FeatureEngine(n_svd_components=6)
     X_raw, _ = engine.fit_transform(df)

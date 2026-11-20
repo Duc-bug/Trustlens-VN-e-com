@@ -118,8 +118,30 @@ trustlens-vn/
 
 ---
 
-## 4. Công Nghệ Sử Dụng
+## 4. Tái Lập Kết Quả Thực Nghiệm & Thông Số Mô Hình
 
-- **Backend:** Python 3.10+, FastAPI, Uvicorn, Pandas, Scikit-learn, LightGBM, XGBoost, NetworkX.
+Dự án đã đóng gói sẵn tập dữ liệu cố định (`backend/app/models_saved/real_ecommerce_reviews.csv`, 2.430 mẫu) và mô hình đã huấn luyện (`all_5_models.pkl`, `metrics.json`) để chạy ngay giao diện Web.
+
+Để tự huấn luyện và kiểm chứng lại toàn bộ 5 mô hình cùng kiểm định chéo 5-Fold từ đầu:
+```bash
+cd backend
+python -m app.ml.train_benchmark
+```
+
+Kết quả thực nghiệm chuẩn trên tập kiểm thử độc lập ($N_{\text{test}} = 608$) và kiểm định chéo 5-Fold ($N = 2.430$):
+
+| Mô hình | Đặc trưng | F1 (%) | ROC-AUC (%) | MCC (%) | Brier ↓ | 5-Fold CV F1 |
+| :--- | :--- | :---: | :---: | :---: | :---: | :---: |
+| 1. Logistic Regression | Chỉ NLP (17 biến) | 88,99 | 95,80 | 82,63 | 0,0676 | 87,30 ± 1,81% |
+| 2. Random Forest | NLP + Thời gian (20 biến) | 88,29 | 97,42 | 83,05 | 0,0688 | 89,81 ± 1,08% |
+| 3. XGBoost (Tabular) | NLP + TG + Hành vi (25 biến) | 93,61 | 98,02 | 90,03 | 0,0378 | 94,36 ± 1,82% |
+| 4. LightGBM + GAT | Đủ 39 biến (Đơn lẻ) | 96,36 | 97,53 | 94,31 | 0,0245 | 95,84 ± 0,94% |
+| **5. TrustLens Hybrid** | **Đủ 39 biến (Stacking + Isotonic)** | **96,82** | **97,64** | **95,02** | **0,0226** | **95,95 ± 0,99%** |
+
+---
+
+## 5. Công Nghệ Sử Dụng
+
+- **Backend:** Python 3.10+, FastAPI, Uvicorn, Pandas, Scikit-learn, LightGBM, XGBoost, NetworkX, SHAP.
 - **Frontend:** Next.js 14, React 18, TypeScript, Tailwind CSS, Lucide Icons, Recharts.
-- **Phương pháp tiếp cận:** Kết hợp xử lý ngôn ngữ tự nhiên tiếng Việt (TF-IDF, n-gram), phân tích chuỗi thời gian phát hiện dồn đơn (Burstiness) và đồ thị mạng lưới hành vi tài khoản để đánh giá độ tin cậy của sản phẩm.
+- **Phương pháp tiếp cận:** Kết hợp xử lý ngôn ngữ tự nhiên tiếng Việt (TF-IDF, Truncated SVD, Shannon Entropy), phân tích chuỗi thời gian phát hiện dồn đơn (Burstiness), đồ thị hành vi NetworkX + Supervised 2-Layer GAT, Stacking Ensemble hiệu chuẩn Isotonic và giải thích cục bộ TreeSHAP.

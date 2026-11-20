@@ -39,7 +39,6 @@ KNOWN_SHOPEE_USERNAMES: Dict[str, int] = {
     "guardian_officialstore": 152872415,
 }
 
-# Real Tiki Product IDs across popular categories (Electronics, Skincare, Books, Home Appliances)
 REAL_TIKI_PRODUCT_IDS = [
     (274036818, "Tai nghe Bluetooth Không Dây chống ồn ANC Baseus Bowie M2s"),
     (184066860, "Serum La Roche-Posay Hyalu B5 Phục Hồi Da Cấp Ẩm Chuyên Sâu 30ml"),
@@ -48,7 +47,6 @@ REAL_TIKI_PRODUCT_IDS = [
     (58359903, "Sữa Chống Nắng Anessa Perfect UV Sunscreen Skincare Milk 60ml"),
 ]
 
-# Real Vietnamese Authentic Reviews collected from Shopee, TikTok Shop, Tiki, Google Maps
 REAL_AUTHENTIC_REVIEWS_CORPUS = [
     ("Mình mua đợt sale 10/10 giá khá hời. Giao hàng mất 2 ngày về tới Hà Nội. Đóng gói có bọc chống sốc cẩn thận, test thử pin nghe liên tục được tầm 4 tiếng rưỡi, âm bass vừa phải chứ không quá căng như quảng cáo nhưng tầm giá này là ổn áp rồi.", 5, "verified_buyer", 1),
     ("Đã dùng được hơn 1 tuần mới dám lên đánh giá. Chất kem thấm khá nhanh, mùi thơm nhẹ không bị nồng mùi cồn. Tuy nhiên da mình hỗn hợp thiên dầu bôi buổi trưa hơi bóng nhẹ vùng chữ T, nên dùng buổi tối hợp hơn.", 4, "verified_buyer", 1),
@@ -97,12 +95,6 @@ AI_GENERATED_SEEDING_CORPUS = [
 
 
 class MultiPlatformScraper:
-    """
-    Live Multi-Platform Scraper for Vietnamese E-Commerce:
-      - Shopee.vn: Full Live Crawler (Shop Info + Categories + Multi-threaded Live Reviews + Media + Variations)
-      - Tiki.vn: Public API v2 Live Crawler
-      - TikTok Shop / Google Maps / Lazada: Smart URL & Metadata Crawler
-    """
 
     def __init__(self, timeout: int = 10):
         self.timeout = timeout
@@ -117,10 +109,6 @@ class MultiPlatformScraper:
 
     @staticmethod
     def _extract_real_buyer_prices_vnd(comments: Optional[List[str]] = None) -> List[int]:
-        """
-        Extracts 100% real purchase prices explicitly mentioned by buyers in comments
-        (e.g. 'mua giá 200k', 'săn sale còn 285.000đ'), ignoring discount/voucher amounts ('giảm 50k').
-        """
         found_prices: List[int] = []
         if not comments:
             return found_prices
@@ -145,12 +133,6 @@ class MultiPlatformScraper:
         return found_prices
 
     def _lookup_market_price_vnd(self, product_name: str, single_query: bool = False) -> int:
-        """
-        Queries Websosanh.vn (cross-store VN price engine) and Tiki Public API v2
-        for the closest matching Vietnamese e-commerce listing of `product_name`
-        with NFC normalization, 3-tier fallback queries, outlier trimming, and caching.
-        Also populates `self._market_similar_cache[cache_key]` with cross-shop similar listings.
-        """
         if not product_name:
             return 0
         norm_name = unicodedata.normalize("NFC", str(product_name)).strip()
@@ -213,7 +195,6 @@ class MultiPlatformScraper:
         ]
         is_pc_product = bool(re.match(r"(?i)^(pc|bộ pc|máy tính bàn|thùng máy)\b", norm_name))
 
-        # 1. Primary: Websosanh.vn universal category-aware price + cross-merchant listing lookup
         for q_str in candidate_queries:
             try:
                 wss_url = f"https://websosanh.vn/s/{quote_plus(q_str)}.htm"
@@ -298,7 +279,6 @@ class MultiPlatformScraper:
             except Exception:
                 pass
 
-        # 2. Fallback: Tiki API v2 with strict alphanumeric model code verification (e.g. 14400f, 473ml)
         model_codes = [
             w.lower()
             for w in query_words
@@ -356,14 +336,6 @@ class MultiPlatformScraper:
         return "E-Commerce"
 
     def _parse_shopee_ids(self, url: str) -> Tuple[Optional[int], Optional[int], str]:
-        """
-        Extracts (shopid, itemid, resolved_url) from ANY Shopee URL format:
-          - https://shopee.vn/Ten-San-Pham-i.147191228.44384813241
-          - https://shopee.vn/product/147191228/44384813241
-          - https://shopee.vn/opaan/147191228/44384813241
-          - https://shopee.vn/shop/147191228
-          - Short links: https://shp.ee/... or https://vn.shp.ee/... or https://s.shopee.vn/...
-        """
         resolved_url = url.strip()
         if any(short_dom in resolved_url.lower() for short_dom in ("shp.ee", "s.shopee.vn", "shopee.link")):
             try:
@@ -375,24 +347,20 @@ class MultiPlatformScraper:
 
         decoded_url = unquote(unquote(resolved_url))
 
-        # Pattern 1: -i.{shopid}.{itemid} or i.{shopid}.{itemid}
         m1 = re.search(r"(?:[-/._\s]|^)i\.(\d+)\.(\d+)", decoded_url)
         if not m1:
             m1 = re.search(r"i\.(\d+)\.(\d+)", decoded_url)
         if m1:
             return int(m1.group(1)), int(m1.group(2)), resolved_url
 
-        # Pattern 2: /product/{shopid}/{itemid}
         m2 = re.search(r"/product/(\d+)/(\d+)", decoded_url)
         if m2:
             return int(m2.group(1)), int(m2.group(2)), resolved_url
 
-        # Pattern 3: /{username_or_anything}/{shopid}/{itemid}
         m3 = re.search(r"shopee\.vn/(?:[^/?#]+/)*(\d{5,12})/(\d{6,15})", decoded_url)
         if m3:
             return int(m3.group(1)), int(m3.group(2)), resolved_url
 
-        # Pattern 4: Query params ?shopid=...&itemid=... or shop_id=...&item_id=...
         parsed = urlparse(resolved_url)
         qs = parse_qs(parsed.query)
         sid_list = qs.get("shopid") or qs.get("shop_id")
@@ -402,12 +370,10 @@ class MultiPlatformScraper:
             iid = int(iid_list[0]) if (iid_list and str(iid_list[0]).isdigit()) else None
             return sid, iid, resolved_url
 
-        # Pattern 5: /shop/{shopid}
         m5 = re.search(r"/shop/(\d+)", decoded_url)
         if m5:
             return int(m5.group(1)), None, resolved_url
 
-        # Pattern 6: Known shop username in path
         path_seg = parsed.path.strip("/").split("/")[0].lower()
         if path_seg in KNOWN_SHOPEE_USERNAMES:
             return KNOWN_SHOPEE_USERNAMES[path_seg], None, resolved_url
@@ -415,13 +381,6 @@ class MultiPlatformScraper:
         return None, None, resolved_url
 
     def crawl_shopee_product(self, url: str, cookie: Optional[str] = None) -> Optional[Dict[str, Any]]:
-        """
-        Full Live Shopee Crawler (Works 100% WITHOUT login/cookies on any Shopee link with shopid/itemid!).
-        1. Calls `/api/v4/shop/get_shop_core_info?shopid={shopid}` for Shop Name, Username, Avatar, Seller UserID.
-        2. Calls `/api/v4/shop/get_categories?limit=30&offset=0&shopid={shopid}` for Shop Categories & Item Counts.
-        3. Uses a 10-worker ThreadPoolExecutor on `/api/v4/seller_operation/get_shop_ratings_new` across star types (1..5)
-           and offsets to fetch hundreds of live Shopee reviews, buyer photos/videos, variations, and product info!
-        """
         shopid, itemid, resolved_url = self._parse_shopee_ids(url)
         if not shopid:
             return None
@@ -431,7 +390,6 @@ class MultiPlatformScraper:
         if cookie:
             headers["Cookie"] = cookie
 
-        # Step 1: Fetch Live Shop Core Info (fast 3s timeout; fallback gracefully if Shopee blocks core_info)
         KNOWN_SHOP_NAMES: Dict[int, Tuple[str, str]] = {
             147191228: ("Laneige Official Store", "laneigevn_officialstore"),
             37251700: ("La Roche-Posay Chính Hãng", "larocheposay_officialstore"),
@@ -463,7 +421,6 @@ class MultiPlatformScraper:
         except Exception as exc:
             logger.warning("Shopee get_shop_core_info error: %s", exc)
 
-        # Step 2: Fetch Live Shop Categories & Total Products Count (fast 2.5s timeout)
         shop_categories: List[Dict[str, Any]] = []
         total_shop_items = 0
         try:
@@ -483,7 +440,6 @@ class MultiPlatformScraper:
         except Exception as exc:
             logger.warning("Shopee get_categories error: %s", exc)
 
-        # Step 3: Multi-threaded Live Review & Product Metadata Crawling + Adaptive Deep-Scan
         now_ts = time.time()
         cached_shop = self._shop_raw_cache.get(shopid)
         if cached_shop and (now_ts - float(cached_shop.get("ts", 0))) < 600:
@@ -519,11 +475,11 @@ class MultiPlatformScraper:
 
         if not raw_items_by_cmtid:
             batch_Args: List[Tuple[int, int]] = (
-                [(5, offset) for offset in range(0, 1000, 50)]  # 20 pages = up to 1,000 5★ ratings (Shopee API max window)
-                + [(4, offset) for offset in range(0, 300, 50)]  # 6 pages = up to 300 4★ ratings
-                + [(3, offset) for offset in (0, 50, 100)]       # 3 pages = up to 150 3★ ratings
-                + [(2, offset) for offset in (0, 50)]            # 2 pages = up to 100 2★ ratings
-                + [(1, offset) for offset in (0, 50)]            # 2 pages = up to 100 1★ ratings
+                [(5, offset) for offset in range(0, 1000, 50)]
+                + [(4, offset) for offset in range(0, 300, 50)]
+                + [(3, offset) for offset in (0, 50, 100)]
+                + [(2, offset) for offset in (0, 50)]
+                + [(1, offset) for offset in (0, 50)]
             )
             with concurrent.futures.ThreadPoolExecutor(max_workers=33) as executor:
                 for star_type, offset, page_items in executor.map(_fetch_rating_page, batch_Args):
@@ -558,8 +514,6 @@ class MultiPlatformScraper:
                     seller_userid = int(rep_obj["userid"])
                     break
 
-        # Step 3c: Compute Unbiased True Star Distribution & True Platform Rating via Poisson Arrival MLE
-        # Since Shopee returns newest 50 reviews per star tier s in {5,4,3,2,1}, arrival rate lambda_s = N_s / delta_t_s
         arrival_rates: Dict[int, float] = {}
         for s in (5, 4, 3, 2, 1):
             p_items = first_page_by_star.get(s) or []
@@ -593,7 +547,6 @@ class MultiPlatformScraper:
             str(s): round(true_star_weights[s] * 100.0, 2) for s in (5, 4, 3, 2, 1)
         }
 
-        # Step 4: Extract Target Product Metadata, Shop Top Products, Variations, and Detailed Ratings
         raw_slug_title = self._extract_title_from_url(resolved_url, "Shopee")
         slug_title = unicodedata.normalize("NFC", raw_slug_title).strip() if raw_slug_title else ""
         detected_product_name = slug_title or f"Sản phẩm Chính hãng tại {shop_name}"
@@ -616,10 +569,8 @@ class MultiPlatformScraper:
             for kw in ("official", "mall", "flagship", "chính hãng", "store")
         )
 
-        # Sort raw ratings newest-first for consistent extraction
         all_raw_ratings.sort(key=lambda x: int(x.get("ctime") or 0), reverse=True)
 
-        # Count exact real occurrences of each userid and (userid, itemid) in the scanned Shopee ratings
         real_user_freq_in_shop: Dict[str, int] = {}
         real_user_item_freq: Dict[Tuple[str, int], int] = {}
         target_id_int = int(itemid) if itemid else 0
@@ -680,7 +631,6 @@ class MultiPlatformScraper:
                 deliv_scores.append(float(det["delivery_service"]))
 
             p_items = r.get("product_items") or []
-            # Select target itemid if present in the order's product_items; otherwise prefer non-gift main item
             first_prod = p_items[0] if p_items else {}
             if p_items:
                 if target_id_int:
@@ -713,7 +663,6 @@ class MultiPlatformScraper:
             model_name = unicodedata.normalize("NFC", str(first_prod.get("model_name") or "")).strip()
             r_ctime_val = int(r.get("ctime") or 0)
 
-            # Register all products in shop_products_map so the user can switch between items
             seen_pids_in_review = set()
             for pi in (p_items or [first_prod]):
                 pi_id = int(pi.get("itemid") or 0)
@@ -781,14 +730,12 @@ class MultiPlatformScraper:
                 if str(reason).strip()
             ]
 
-            # Separate Shopee form headers from actual buyer free-text words
             stripped_free_text = form_header_pattern.sub(" ", raw_comment)
             for tag_str in template_tags:
                 stripped_free_text = stripped_free_text.replace(tag_str, " ")
             free_text_words = [w for w in re.split(r"\s+", stripped_free_text.strip()) if len(w) >= 2]
             free_text_word_count = len(free_text_words)
 
-            # Construct rich comment representation without dropping non-text ratings
             has_real_text = bool(raw_comment)
             if has_real_text:
                 comment_text = raw_comment
@@ -819,7 +766,6 @@ class MultiPlatformScraper:
             reply_obj = r.get("ItemRatingReply") or {}
             seller_reply = (reply_obj.get("comment") or "").strip() if isinstance(reply_obj, dict) else ""
 
-            # 100% Real observed metrics from Shopee API (Zero random or hash-inferred values!)
             observed_user_reviews = int(real_user_freq_in_shop.get(uid, 1))
             same_item_repeat = int(real_user_item_freq.get((uid, r_itemid), 1)) > 1
             real_user_key = f"u_{uid}" if same_item_repeat else f"u_{uid}_{r_itemid}"
@@ -878,7 +824,6 @@ class MultiPlatformScraper:
         exact_item_all_reviews = exact_item_text_reviews + exact_item_media_or_star_reviews
         effective_target_id = target_id_int
 
-        # Fallback: if target_id_int had 0 direct ID matches but slug_title matches a duplicate product in shop_products_map
         gift_keywords = ("[HB GIFT", "[GIFT", "QUÀ TẶNG", "HÀNG TẶNG")
         is_slug_gift = any(gk in slug_title.upper() for gk in gift_keywords)
         if len(exact_item_all_reviews) == 0 and slug_title and shop_products_map:
@@ -911,7 +856,6 @@ class MultiPlatformScraper:
                                 exact_item_media_or_star_reviews.append(rev_c)
                     exact_item_all_reviews = exact_item_text_reviews + exact_item_media_or_star_reviews
 
-        # Apply Poisson Horizon Correction to every item in shop_products_map
         all_shop_items = list(shop_products_map.values())
         horizon_counts_by_pid: Dict[int, Dict[int, int]] = {}
         for sp in all_shop_items:
@@ -948,7 +892,6 @@ class MultiPlatformScraper:
         total_exact_count = len(exact_item_all_reviews)
 
         if total_exact_count > 0:
-            # Target product has its own reviews in the crawled set -> ONLY include this exact product's reviews!
             combined_reviews = exact_item_all_reviews[:500]
             if effective_target_id and effective_target_id in horizon_counts_by_pid:
                 star_counts = dict(horizon_counts_by_pid[effective_target_id])
@@ -1023,7 +966,6 @@ class MultiPlatformScraper:
         if not variations_set and top_shop_products:
             variations_set = set(top_shop_products[0].get("variations", []))
 
-        # Extract real buyer price mentions + live market price lookup for accurate approximate price
         exact_prices = self._extract_real_buyer_prices_vnd(
             [r.get("comment", "") for r in exact_item_text_reviews]
         )
@@ -1038,7 +980,6 @@ class MultiPlatformScraper:
         else:
             detected_price_vnd = 0
 
-        # Enrich candidate shop products without triggering Websosanh burst rate-limit (prioritize buyer comment prices + top 3 lookups)
         wss_budget = 3
         for sp_obj in top_shop_products:
             fb_p = int(sp_obj.get("fallback_buyer_price_vnd") or 0)
@@ -1068,7 +1009,6 @@ class MultiPlatformScraper:
             if not c_txt or c_txt.startswith("[Đánh giá "):
                 continue
             c_low = c_txt.lower()
-            # Skip obvious coin-farming spam
             if "nhận xu" in c_low or "kiếm xu" in c_low or "lấy xu" in c_low:
                 continue
             tags: List[str] = []
@@ -1162,9 +1102,6 @@ class MultiPlatformScraper:
         }
 
     def crawl_tiki_product(self, url_or_id: str, max_pages: int = 4) -> Optional[Dict[str, Any]]:
-        """
-        Live crawl real product info & customer reviews from Tiki.vn API v2.
-        """
         product_id = None
         spid = None
 
@@ -1329,16 +1266,8 @@ class MultiPlatformScraper:
         demo_products: List[Dict[str, Any]],
         cookie: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """
-        100% Real Data URL Crawler for Shopee & Tiki.
-        - For ANY Shopee URL: Calls `crawl_shopee_product` to fetch 100% live real-time shop, product,
-          categories, variations, images/videos, and customer reviews directly from Shopee VN.
-        - For ANY Tiki URL: Calls `crawl_tiki_product` via Tiki REST API v2.
-        - Never clones or substitutes synthetic fallback data!
-        """
         platform = self.detect_platform(url)
 
-        # 1. Live Shopee Crawler
         if platform == "Shopee":
             live_shopee = self.crawl_shopee_product(url, cookie=cookie)
             if live_shopee and len(live_shopee.get("reviews", [])) > 0:
@@ -1347,7 +1276,6 @@ class MultiPlatformScraper:
                 "Không thể cào dữ liệu thật từ link Shopee này. Vui lòng kiểm tra lại định dạng link sản phẩm Shopee (có chứa shopid/itemid, ví dụ: shopee.vn/product/147191228/25866559724 hoặc -i.shopid.itemid)."
             )
 
-        # 2. Live Tiki Crawler
         if platform == "Tiki":
             live_tiki = self.crawl_tiki_product(url, max_pages=6)
             if live_tiki and len(live_tiki.get("reviews", [])) > 0:
@@ -1356,7 +1284,6 @@ class MultiPlatformScraper:
                 "Không thể cào dữ liệu thật từ link Tiki này. Vui lòng kiểm tra lại link sản phẩm Tiki.vn hợp lệ (có chứa mã -p123456.html)."
             )
 
-        # 3. Check if URL matches a pre-crawled real product in sample_products.json
         for prod in demo_products:
             if prod.get("url", "").strip().lower() == url.strip().lower():
                 return prod

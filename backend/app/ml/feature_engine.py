@@ -13,7 +13,6 @@ from sklearn.metrics.pairwise import cosine_similarity
 
 from app.ml.graph_model import BehavioralGraphEngine
 
-# Vietnamese Seeding, Coin-Farming, and AI-Template Lexicons
 SEEDING_HYPE_PATTERNS = [
     r"đỉnh của chóp",
     r"vượt mong đợi",
@@ -154,10 +153,6 @@ FEATURE_LABELS_VI: Dict[str, str] = {
 
 
 class FeatureEngine:
-    """
-    End-to-end Feature Engineering pipeline combining Vietnamese NLP, Temporal Burstiness,
-    and Behavioral NetworkX + Supervised Graph Attention features.
-    """
 
     def __init__(self, n_svd_components: int = 6):
         self.n_svd_components = n_svd_components
@@ -256,8 +251,7 @@ class FeatureEngine:
             char_entropy[i] = 3.85 if is_auto_placeholder else self._shannon_char_entropy(clean_txt)
             sent_burstiness[i] = 0.32 if is_auto_placeholder else self._clause_burstiness(clean_txt)
 
-            # Sentiment-rating mismatch: 5-star review with coin-farm / complaint or extreme hype without nuance
-            star_norm = (ratings[i] - 1.0) / 4.0  # [0, 1]
+            star_norm = (ratings[i] - 1.0) / 4.0
             if coin >= 1 and ratings[i] >= 5.0:
                 sent_mismatch[i] = 0.90
             elif neg_c >= 1 and ratings[i] >= 5.0:
@@ -267,8 +261,6 @@ class FeatureEngine:
             else:
                 sent_mismatch[i] = abs(star_norm - min(1.0, 0.5 + 0.2 * (hype - neg_c))) * 0.3
 
-        # Compute domain-independent max cosine similarity within each product group using char_wb 3-5 grams
-        # so out-of-vocabulary domain words (skincare, fashion, food) never cause false similarity spikes
         max_cos_sim = np.zeros(n, dtype=np.float32)
         prod_ids = (
             df["product_id"].astype(str).to_numpy()
@@ -294,7 +286,6 @@ class FeatureEngine:
                     np.fill_diagonal(sim, 0.0)
                     max_cos_sim[idx] = np.max(sim, axis=1).clip(0.0, 1.0)
 
-        # SVD components
         actual_comp = min(
             self.n_svd_components, tfidf_mat.shape[1] - 1, tfidf_mat.shape[0] - 1
         )
@@ -344,8 +335,6 @@ class FeatureEngine:
             if "product_id" in df.columns
             else np.full(n, "default")
         )
-        # Scope 15-min burst detection by item_id when available so multi-product shop traffic
-        # is not conflated with single-product order buffing
         if "item_id" in df.columns:
             item_ids = df["item_id"].fillna("").astype(str).to_numpy()
             group_keys = np.array(

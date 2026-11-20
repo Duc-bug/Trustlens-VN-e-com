@@ -9,15 +9,6 @@ from sklearn.metrics.pairwise import cosine_similarity
 
 
 class GraphAttentionEmbedder:
-    """
-    Supervised 2-Layer Graph Attention (GAT) Message Passing over the Review Behavioral Graph.
-    Given node features X (N x D) and weighted adjacency matrix A (N x N), computes:
-      e_{ij} = LeakyReLU(a^T [W h_i || W h_j]) + log(A_{ij} + I)
-      alpha_{ij} = softmax_j(e_{ij})
-      h_i' = ELU(sum_j alpha_{ij} W h_j)
-    Supports supervised parameter optimization (`fit_supervised`) using Binary Cross-Entropy
-    gradient descent so attention weights focus on true seeding collusion structures.
-    """
 
     def __init__(self, in_dim: int = 6, hidden_dim: int = 10, out_dim: int = 4, seed: int = 42):
         self.in_dim = in_dim
@@ -67,10 +58,10 @@ class GraphAttentionEmbedder:
         a_src: np.ndarray,
         a_dst: np.ndarray,
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-        Wh = H @ W  # (N, F)
-        f_src = Wh @ a_src  # (N, 1)
-        f_dst = Wh @ a_dst  # (N, 1)
-        logits = self._leaky_relu(f_src + f_dst.T)  # (N, N)
+        Wh = H @ W
+        f_src = Wh @ a_src
+        f_dst = Wh @ a_dst
+        logits = self._leaky_relu(f_src + f_dst.T)
 
         mask = (adj > 0).astype(np.float32)
         np.fill_diagonal(mask, 1.0)
@@ -101,10 +92,6 @@ class GraphAttentionEmbedder:
         epochs: int = 35,
         lr: float = 0.035,
     ) -> None:
-        """
-        Supervised training of GAT projection and attention parameters using Binary Cross-Entropy
-        with L2 weight decay on labeled review graphs.
-        """
         n = len(X)
         if n < 4:
             return
@@ -117,25 +104,21 @@ class GraphAttentionEmbedder:
             logits_out = H2 @ self.w_out + self.b_out
             preds = self._sigmoid(logits_out)
 
-            # BCE gradient w.r.t readout
-            d_logits = (preds - y_col) / float(n)  # (N, 1)
+            d_logits = (preds - y_col) / float(n)
             dw_out = H2.T @ d_logits + 1e-3 * self.w_out
             db_out = np.sum(d_logits, axis=0)
 
-            # Backprop through Layer 2
             dH2 = d_logits @ self.w_out.T
             d_pre2 = dH2 * self._elu_grad(pre2)
             dWh2 = alpha2.T @ d_pre2
             dW2 = H1.T @ dWh2 + 1e-3 * self.W2
 
-            # Attention vector update signal for Layer 2
             Wh2 = H1 @ self.W2
             d_alpha2 = d_pre2 @ Wh2.T
             da2_src = np.mean(d_alpha2, axis=1, keepdims=True).T @ Wh2
             self.a2_src -= lr * 0.25 * da2_src.T.clip(-0.5, 0.5)
             self.a2_dst -= lr * 0.25 * da2_src.T.clip(-0.5, 0.5)
 
-            # Backprop through Layer 1
             dH1 = dWh2 @ self.W2.T
             d_pre1 = dH1 * self._elu_grad(pre1)
             dWh1 = alpha1.T @ d_pre1
@@ -150,18 +133,6 @@ class GraphAttentionEmbedder:
 
 
 class BehavioralGraphEngine:
-    """
-    Constructs the Behavioral User-Review Graph per product (or sub-corpus) and extracts:
-      - `graph_pagerank`: PageRank score in the suspicious co-occurrence network
-      - `graph_degree_centrality`: Normalized degree centrality
-      - `graph_clustering_coeff`: Local triangle clustering coefficient (clique behavior)
-      - `graph_cluster_size`: Size of the Louvain/Modularity community or connected component
-      - `graph_kcore_number`: K-Core decomposition number (deepest collusion core)
-      - `graph_community_modularity`: Modularity Q-score of the product review network
-      - `graph_shared_ip_links`: Number of edges sharing device/IP signature or burst window
-      - `graph_gat_emb_0..3`: 4D Supervised Graph Attention embeddings aggregating 2-hop signals
-      - `graph_neighbor_suspect_score`: Attention-weighted neighborhood + supervised GAT anomaly score
-    """
 
     def __init__(self):
         self.gat = GraphAttentionEmbedder(in_dim=6, hidden_dim=10, out_dim=4, seed=42)
@@ -308,7 +279,6 @@ class BehavioralGraphEngine:
                         }
                     )
 
-        # 1. PageRank, Degree Centrality, Local Clustering
         try:
             pagerank = nx.pagerank(G, weight="weight", alpha=0.85)
         except Exception:
@@ -317,7 +287,6 @@ class BehavioralGraphEngine:
         deg_cent = nx.degree_centrality(G)
         clustering = nx.clustering(G, weight="weight")
 
-        # 2. K-Core Decomposition (identifies tightly connected collusion subgraphs)
         G_simple = G.copy()
         G_simple.remove_edges_from(nx.selfloop_edges(G_simple))
         try:
@@ -325,7 +294,6 @@ class BehavioralGraphEngine:
         except Exception:
             kcore_map = {i: int(G.degree(i)) for i in range(n)}
 
-        # 3. Louvain / Greedy Modularity Community Detection
         comp_sizes: Dict[int, int] = {}
         comp_id_map: Dict[int, int] = {}
         modularity_q = 0.0
@@ -356,7 +324,6 @@ class BehavioralGraphEngine:
                 comp_sizes[i] = 1
                 comp_id_map[i] = i
 
-        # 4. Construct node intrinsic matrix X (N x 6) for Supervised GAT
         pr_arr = np.array(
             [pagerank.get(i, 0.0) * n for i in range(n)], dtype=np.float32
         )
@@ -380,13 +347,11 @@ class BehavioralGraphEngine:
             axis=1,
         )
 
-        # If ground-truth labels are passed during training, update GAT weights via backprop
         if y_labels is not None and len(y_labels) == n:
             self.gat.fit_supervised(X_node, adj, y_labels, epochs=30, lr=0.04)
 
         gat_emb, attn_weights, gat_readout_prob = self.gat.forward(X_node, adj)
 
-        # Combine attention-propagated anomaly with supervised GAT readout probability
         local_raw_anomaly = (
             0.26 * deg_arr
             + 0.22 * sim_peak
@@ -422,7 +387,6 @@ class BehavioralGraphEngine:
             index=df_prod.index,
         )
 
-        # Build Interactive Graph Visualization Payload (top 42 nodes for crisp rendering)
         ranked_indices = np.argsort(-(deg_arr + 0.5 * neighbor_suspect_score))[:42]
         selected_set = set(int(idx) for idx in ranked_indices)
 

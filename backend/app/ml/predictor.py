@@ -15,10 +15,6 @@ from app.ml.train_benchmark import train_and_save_all
 
 
 class TrustLensPredictor:
-    """
-    Production Inference & SHAP Explanation Engine for TrustLens VN.
-    Automatically loads all 5 saved models from `models_saved/` or triggers training on first boot.
-    """
 
     def __init__(self, models_dir: str):
         self.models_dir = models_dir
@@ -89,7 +85,6 @@ class TrustLensPredictor:
 
         X_feat, aux = self.engine.transform(df)
 
-        # Execute all 5 models in parallel on the current product's feature matrix
         model_raw_probs: Dict[str, np.ndarray] = {}
         model_latencies: Dict[str, float] = {}
         for m_key, m_entry in self.all_5_models.items():
@@ -113,7 +108,6 @@ class TrustLensPredictor:
             + 0.10 * model_raw_probs["logreg_nlp"]
         )
 
-        # Calibrate probabilities with explicit Vietnamese linguistic/behavioral signals for live crawled reviews
         probs = np.copy(raw_probs)
         live_meta = product_data.get("shopee_live_meta") or {}
         is_official_shop = bool(live_meta.get("is_official_shop", False))
@@ -140,7 +134,6 @@ class TrustLensPredictor:
             )
             is_form_only_comment = (len(tpl_tags_list) > 0 and free_words_i <= 6)
 
-            # Inspect real Shopee video metadata (duration_ms & template_video)
             vids_i = row_i.get("media_videos")
             vids_list = vids_i if isinstance(vids_i, list) else []
             has_template_vid = any(bool(v.get("template_video")) for v in vids_list if isinstance(v, dict))
@@ -153,7 +146,6 @@ class TrustLensPredictor:
                 if isinstance(v, dict)
             )
 
-            # Inspect real Shopee 3-criteria detailed sub-ratings
             det_i = row_i.get("detailed_rating")
             prod_qual_i = (
                 int(det_i.get("product_quality", r_star_i))
@@ -189,7 +181,6 @@ class TrustLensPredictor:
             if bonus > 0:
                 probs[i] = max(float(probs[i]), bonus)
             else:
-                # Prevent false-positive flags on genuine buyer reviews backed by real Shopee signals
                 if r_star_i <= 4 and coin_sc == 0:
                     probs[i] = min(float(probs[i]), 0.16)
                 elif is_repeat_buyer and coin_sc == 0 and (cos_sim < 0.45 or is_form_only_comment):
@@ -210,30 +201,24 @@ class TrustLensPredictor:
                 ):
                     probs[i] = min(float(probs[i]) * 0.45, 0.32)
 
-            # Calibrate individual 5 model votes consistently with each model's feature scope
             target_p = float(probs[i])
             votes_i: Dict[str, float] = {}
             flagged_cnt_i = 0
             for m_key, m_entry in self.all_5_models.items():
                 raw_m = float(model_raw_probs[m_key][i])
                 if m_key == "logreg_nlp":
-                    # NLP only: strong on text/coin/AI/similarity, blind to burst/graph
                     nlp_signal = max(coin_sc * 0.90, ai_sc * 0.84, hype_sc * 0.78)
                     if cos_sim >= 0.50 and not is_auto_note and not is_form_only_comment and free_words_i >= 8:
                         nlp_signal = max(nlp_signal, 0.75)
                     p_m = max(raw_m, nlp_signal) if nlp_signal > 0 else (min(raw_m, 0.28) if target_p < 0.40 else 0.55 * raw_m + 0.45 * target_p)
                 elif m_key == "rf_nlp_temp":
-                    # NLP + Temporal: sees text + 15m burst
                     temp_signal = 0.76 if (burst_15m >= 4.0 and r_star_i == 5) else 0.0
                     p_m = max(raw_m, temp_signal, target_p * 0.92 if bonus > 0 else 0.0) if (bonus > 0 or temp_signal > 0) else min(raw_m, target_p + 0.06)
                 elif m_key == "xgb_tabular":
-                    # NLP + Temporal + Behavioral
                     p_m = 0.30 * raw_m + 0.70 * target_p
                 elif m_key == "lgbm_graph_gat":
-                    # Full features single GBDT
                     p_m = 0.20 * raw_m + 0.80 * target_p
                 else:
-                    # TrustLens Stacking Ensemble
                     p_m = target_p
 
                 p_m_clamped = float(np.clip(p_m, 0.02, 0.98))
@@ -245,7 +230,6 @@ class TrustLensPredictor:
             per_review_model_votes.append(votes_i)
             per_review_flagged_count.append(flagged_cnt_i)
 
-        # Compute SHAP values for all reviews of this product
         shap_vals = self.explainer.shap_values(X_feat)
         if isinstance(shap_vals, list):
             shap_mat = np.array(shap_vals[1])
@@ -350,7 +334,6 @@ class TrustLensPredictor:
             word_cnt = int(f_row.get("nlp_word_count", 0))
             det_rating = row.get("detailed_rating") if isinstance(row.get("detailed_rating"), dict) else None
 
-            # Build 100% real-data concrete Authenticity Signals vs Seeding Signals
             authenticity_signals: List[str] = []
             seeding_signals: List[str] = []
 
@@ -466,7 +449,6 @@ class TrustLensPredictor:
         total_count = len(enriched_reviews)
         seeding_rate_pct = round((seeding_count / max(1, total_count)) * 100, 1)
 
-        # Build live 5-model comparison on this product
         live_model_comparison: List[Dict[str, Any]] = []
         for m_key, m_entry in self.all_5_models.items():
             p_vec = model_raw_probs[m_key]
@@ -487,7 +469,6 @@ class TrustLensPredictor:
                 "is_proposed": bool(m_key == "proposed_hybrid_graph_lgbm"),
             })
 
-        # Compute Reliability-Weighted True Rating from authentic buyer reviews (with horizon star-tier weighting)
         live_meta = product_data.get("shopee_live_meta") or {}
         true_star_share = live_meta.get("true_star_share_pct") or {}
         auth_star_counts: Dict[int, int] = {}

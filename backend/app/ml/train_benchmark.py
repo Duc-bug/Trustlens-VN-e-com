@@ -44,7 +44,6 @@ logger = logging.getLogger(__name__)
 
 
 def _find_optimal_f1_threshold(y_true: np.ndarray, y_prob: np.ndarray) -> float:
-    """Finds threshold tau* in [0.25, 0.75] that maximizes F1-Score on validation probabilities."""
     best_tau = 0.50
     best_f1 = -1.0
     for tau in np.linspace(0.30, 0.70, 41):
@@ -59,7 +58,6 @@ def _find_optimal_f1_threshold(y_true: np.ndarray, y_prob: np.ndarray) -> float:
 def _sample_curve_points(
     x_arr: np.ndarray, y_arr: np.ndarray, num_points: int = 21
 ) -> List[Dict[str, float]]:
-    """Interpolates curve coordinates onto a clean grid [0.00, 0.05, ..., 1.00] for frontend charts."""
     grid = np.linspace(0.0, 1.0, num_points)
     order = np.argsort(x_arr)
     x_sorted = x_arr[order]
@@ -161,10 +159,6 @@ def train_and_save_all(models_dir: str, rebuild_data: bool = False) -> Dict[str,
     graph_cols = [c for c in X_raw.columns if c.startswith("graph_")]
     all_cols = list(X_raw.columns)
 
-    # Simulate realistic stealth camouflage in benchmark evaluation:
-    # - 35% of seeding reviews mimic authentic wording (NLP features alone are ambiguous)
-    # - 20% of seeding reviews spread across hours (Temporal features alone miss slow-drip sockpuppets)
-    # - Graph ML (NetworkX + Supervised GAT + K-Core + Modularity) captures multi-account collusion
     rng = np.random.RandomState(2026)
     X = X_raw.copy()
 
@@ -188,7 +182,6 @@ def train_and_save_all(models_dir: str, rebuild_data: bool = False) -> Dict[str,
         X, y_eval, test_size=0.25, random_state=42, stratify=y_eval
     )
 
-    # Model Builders for Hold-out & Stratified 5-Fold CV
     def build_logreg():
         return Pipeline(
             [
@@ -269,7 +262,6 @@ def train_and_save_all(models_dir: str, rebuild_data: bool = False) -> Dict[str,
             n_jobs=1,
         )
 
-    # 1. Baseline 1: Logistic Regression (NLP features only)
     t0 = time.perf_counter()
     clf_logreg = build_logreg()
     clf_logreg.fit(X_train[nlp_cols], y_train)
@@ -278,7 +270,6 @@ def train_and_save_all(models_dir: str, rebuild_data: bool = False) -> Dict[str,
     m_logreg = _evaluate_predictions(y_test, prob_logreg, threshold=0.50)
     cv_logreg = _run_stratified_5fold_cv(X, y_eval, nlp_cols, build_logreg)
 
-    # 2. Baseline 2: Random Forest (NLP + Temporal Burstiness)
     t0 = time.perf_counter()
     cols_rf = nlp_cols + temp_cols
     clf_rf = build_rf()
@@ -288,7 +279,6 @@ def train_and_save_all(models_dir: str, rebuild_data: bool = False) -> Dict[str,
     m_rf = _evaluate_predictions(y_test, prob_rf, threshold=0.50)
     cv_rf = _run_stratified_5fold_cv(X, y_eval, cols_rf, build_rf)
 
-    # 3. Baseline 3: XGBoost (NLP + Temporal + Account Behavioral Tabular)
     t0 = time.perf_counter()
     cols_xgb = nlp_cols + temp_cols + beh_cols
     clf_xgb = build_xgb()
@@ -298,7 +288,6 @@ def train_and_save_all(models_dir: str, rebuild_data: bool = False) -> Dict[str,
     m_xgb = _evaluate_predictions(y_test, prob_xgb, threshold=0.50)
     cv_xgb = _run_stratified_5fold_cv(X, y_eval, cols_xgb, build_xgb)
 
-    # 4. Baseline 4: LightGBM + Supervised GAT (Single GBDT on Full 39 Features)
     t0 = time.perf_counter()
     clf_lgbm = build_lgbm_graph()
     clf_lgbm.fit(X_train[all_cols], y_train)
@@ -307,7 +296,6 @@ def train_and_save_all(models_dir: str, rebuild_data: bool = False) -> Dict[str,
     m_lgbm = _evaluate_predictions(y_test, prob_lgbm, threshold=0.50)
     cv_lgbm = _run_stratified_5fold_cv(X, y_eval, all_cols, build_lgbm_graph)
 
-    # 5. Proposed Model: TrustLens Stacking Ensemble + Isotonic Calibration + Optimal Thresholding
     t0 = time.perf_counter()
     clf_stack = build_stacking_hybrid()
     clf_stack.fit(X_train[all_cols], y_train)
@@ -320,7 +308,6 @@ def train_and_save_all(models_dir: str, rebuild_data: bool = False) -> Dict[str,
     cal_test_prob = calibrator.transform(raw_test_prob)
 
     opt_tau = _find_optimal_f1_threshold(y_train, cal_train_prob)
-    # Blend 80% isotonic + 20% raw for smooth ROC curve resolution
     prob_hybrid = 0.80 * cal_test_prob + 0.20 * raw_test_prob
     lat_hybrid = round((time.perf_counter() - t0) * 1000, 1)
     m_hybrid = _evaluate_predictions(y_test, prob_hybrid, threshold=opt_tau)
@@ -328,7 +315,6 @@ def train_and_save_all(models_dir: str, rebuild_data: bool = False) -> Dict[str,
         X, y_eval, all_cols, build_stacking_hybrid, calibrate=True
     )
 
-    # Ensure Proposed Stacking Hybrid strictly dominates or matches best single tree
     if m_hybrid["f1_score"] < m_lgbm["f1_score"]:
         m_hybrid = _evaluate_predictions(
             y_test,
@@ -338,7 +324,6 @@ def train_and_save_all(models_dir: str, rebuild_data: bool = False) -> Dict[str,
             ),
         )
 
-    # Compute Paired Student's t-test (Proposed vs each baseline across 5 CV folds)
     proposed_folds = np.array(cv_hybrid["fold_f1_scores"], dtype=np.float64)
 
     def _compute_paired_ttest(baseline_folds: List[float]) -> Dict[str, Any]:
@@ -362,7 +347,6 @@ def train_and_save_all(models_dir: str, rebuild_data: bool = False) -> Dict[str,
     ttest_xgb = _compute_paired_ttest(cv_xgb["fold_f1_scores"])
     ttest_lgbm = _compute_paired_ttest(cv_lgbm["fold_f1_scores"])
 
-    # Refit all 5 production models on full dataset for real-time Multi-Model Consensus inference
     prod_logreg = build_logreg()
     prod_logreg.fit(X_raw[nlp_cols], y)
 
@@ -384,7 +368,6 @@ def train_and_save_all(models_dir: str, rebuild_data: bool = False) -> Dict[str,
     )
     prod_hybrid.fit(X_raw[all_cols], y)
 
-    # Fit production Isotonic Calibrator on clean dataset
     prod_raw_probs = prod_hybrid.predict_proba(X_raw[all_cols])[:, 1]
     prod_calibrator = IsotonicRegression(out_of_bounds="clip")
     prod_calibrator.fit(prod_raw_probs, y)
@@ -395,7 +378,6 @@ def train_and_save_all(models_dir: str, rebuild_data: bool = False) -> Dict[str,
     prod_stack_calibrator = IsotonicRegression(out_of_bounds="clip")
     prod_stack_calibrator.fit(prod_stack_raw_probs, y)
 
-    # Compute Global SHAP Feature Importance using shap.TreeExplainer
     explainer = shap.TreeExplainer(prod_hybrid)
     sample_X = X_raw[all_cols].sample(n=min(450, len(X_raw)), random_state=42)
     shap_vals = explainer.shap_values(sample_X)

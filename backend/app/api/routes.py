@@ -96,7 +96,6 @@ async def analyze_uploaded_file(
     if df.empty:
         raise HTTPException(status_code=400, detail="File tải lên không có dòng dữ liệu nào.")
 
-    # Flexible column mapping for real scraped exports from Shopee / TikTok / Tiki / Google Maps
     col_map = {}
     for col in df.columns:
         c_low = col.strip().lower()
@@ -113,7 +112,6 @@ async def analyze_uploaded_file(
 
     df = df.rename(columns=col_map)
     if "comment" not in df.columns:
-        # Pick the first text/object column with longest average string length
         str_cols = [c for c in df.columns if df[c].dtype == "object"]
         if str_cols:
             best_col = max(str_cols, key=lambda c: df[c].astype(str).str.len().mean())
@@ -161,10 +159,6 @@ def get_benchmarks() -> Dict[str, Any]:
 
 @router.get("/extractor-script")
 def get_browser_extractor_script() -> Dict[str, str]:
-    """
-    Returns a 1-click DevTools Console JavaScript snippet that extracts live visible reviews
-    from Shopee, TikTok Shop, Lazada, or Google Maps directly in the user's browser and downloads JSON.
-    """
     js_code = """// === TRUSTLENS VN: 1-CLICK LIVE REVIEW EXTRACTOR (SHOPEE / TIKTOK SHOP / GOOGLE MAPS) ===
 // HDSD: Mở trang sản phẩm trên trình duyệt -> Nhấn F12 (Console) -> Dán code này và nhấn Enter.
 (() => {

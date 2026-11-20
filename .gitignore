@@ -1,23 +1,15 @@
-# ==========================================
-# 1. CÔNG CỤ AI & AGENT (KHÔNG PUSH)
-# ==========================================
+# Local tools & reports
 graphify-out/
 .agent/
 .gemini/
 .claude/
 .cursor/
 .brain/
-
-# ==========================================
-# 2. TÀI LIỆU BÁO CÁO NỘI BỘ (KHÔNG PUSH)
-# ==========================================
 docs/
 report/
 backend/models_saved/
 
-# ==========================================
-# 3. PYTHON & MÔI TRƯỜNG ẢO
-# ==========================================
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
@@ -29,9 +21,7 @@ venv/
 env/
 ENV/
 
-# ==========================================
-# 3. NODE & NEXT.JS BUILD (RẤT NẶNG)
-# ==========================================
+# Node / Next.js
 frontend/node_modules/
 frontend/.next/
 frontend/out/
@@ -43,18 +33,14 @@ yarn-debug.log*
 yarn-error.log*
 *.log
 
-# ==========================================
-# 4. BIẾN MÔI TRƯỜNG & BẢO MẬT
-# ==========================================
+# Env
 .env
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
 
-# ==========================================
-# 5. OS & IDE CÁ NHÂN
-# ==========================================
+# OS & IDE
 .DS_Store
 Thumbs.db
 desktop.ini
